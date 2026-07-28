@@ -4,7 +4,8 @@
       "Bash(flutter test *)",
       "Bash(flutter analyze *)",
       "Bash(xargs wc -l)",
-      "Bash(flutter --version)"
+      "Bash(flutter --version)",
+      "Read(//c/Users/lucaz/.claude/plugins/cache/mattpocock/mattpocock-skills/1.2.0/skills/productivity/grill-me/**)"
     ]
   }
 }
