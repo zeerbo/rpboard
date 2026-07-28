@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter test *)",
+      "Bash(flutter analyze *)",
+      "Bash(xargs wc -l)",
+      "Bash(flutter --version)"
+    ]
+  }
+}

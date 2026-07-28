@@ -1,0 +1,17 @@
+# 03 — Single-item Chapter provider, ChapterScreen, and CampaignScreen's rename call site
+
+**What to build:** The `Database` seam first gains the single-entity read it is missing — `getChapter(String id)`, mirroring the `where: 'id = ?'` shape `getCampaign`/`getCharacter` already have, implemented in `SqfliteDatabase` against the existing table and in the test-only `InMemoryDatabase` fake as the equivalent map lookup. On top of it, a `chapterProvider(id)` joins the provider graph, backed by that new read and the existing `updateChapter`. `ChapterScreen` stops loading its own Chapter by hand — today it fetches the whole chapter list for its campaign through the seam and filters in memory for its route id — and instead `ref.watch(chapterProvider(chapterId))` for the header title it displays. `CampaignScreen`'s chapter-rename dialog — today the one existing writer for an existing Chapter, saving through `chapterListProvider`'s notifier — moves its write to `chapterProvider(id).notifier.save(...)`, which now owns invalidating both itself and the parent `chapterListProvider` for that chapter's campaign. A DM renaming a chapter from the campaign's chapter list sees the new title immediately if they open that chapter's own screen afterward, and the same title is read from the same place wherever it's shown.
+
+**Blocked by:** atomic-reorder 02 — Chapter reorder becomes atomic, and atomic-reorder 03 — SessionScreen reorder becomes atomic. Both rewrite the same two screens this ticket touches (`CampaignScreen`, `ChapterScreen`) and the same provider file; the maintainer has sequenced C3 ahead of C4.
+
+**Status:** done
+
+- [x] `Database.getChapter(String id)` is declared, returning `Future<Chapter?>`, implemented in `SqfliteDatabase` via a `where: 'id = ?'` query against the existing table and in the `InMemoryDatabase` fake via a map lookup — both returning `null` for an unknown id, matching their existing `getCampaign`/`getCharacter` shape; no table, column, or `onCreate` DDL change
+- [x] `chapterProvider` is an `AsyncNotifierProvider.family<..., Chapter?, String>` keyed by chapter id; `build(id)` calls `Database.getChapter(id)` and returns its result, including `null`
+- [x] `chapterProvider(id).notifier.save(Chapter)` writes through `Database.updateChapter`, calls `ref.invalidateSelf()`, then invalidates `chapterListProvider` for that chapter's campaign
+- [x] `ChapterScreen` no longer fetches the full chapter list and filters for its own id in `initState`; it `ref.watch(chapterProvider(chapterId))` for the header title and renders loading / error / missing explicitly
+- [x] `CampaignScreen`'s chapter-rename call site is rewritten to `chapterProvider(id).notifier.save(...)`; it no longer saves a rename through `chapterListProvider`'s notifier
+- [x] `CampaignScreen`'s chapter add/delete/reorder call sites are untouched — they remain collection-shaped operations on `chapterListProvider`, outside this PRD's writer rule
+- [x] A `ProviderContainer` test overriding `databaseProvider` with the `InMemoryDatabase` fake covers: `build` returns the correct Chapter for a known id; `build` for an unknown id returns `null` without throwing; `save` is observable on a subsequent read of `chapterProvider(id)`; after `save`, re-reading `chapterListProvider` for that campaign reflects the change
+- [x] `flutter analyze` clean; full `flutter test` green
+- [x] Manually verified: renaming a chapter from the campaign screen, then opening that chapter, shows the new title with no stale copy

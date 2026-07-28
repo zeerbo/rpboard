@@ -1,0 +1,18 @@
+# 01 — CustomTableData and ImageData get their own widgets
+
+**What to build:** Give the two kinds of SessionComponent that still have no widget of their own — custom table and image — the same treatment the narrative text, NPC stat block, and initiative tracker kinds already have: one widget file each under `master/session/components/`, taking the shared `(component, isEditMode, onUpdate)` shape, with payload parsing, the rendering itself, the empty-state placeholder, and the caption written once instead of once per screen. For the custom table, `isEditMode` only toggles the configure/edit affordance and its dialog. For the image, it toggles the edit affordance and preview density (compact for a card in the component list, full-size for a single Play Mode screen) — density only, never structure or code path. Both kinds are handled together because the work is one operation on the same two switch sites: the edit screen's component card and the play screen's component renderer each stop carrying two private classes and call the new widgets instead, and all four private classes are deleted in the same pass. After this ticket every one of the five kinds has exactly one widget, and a DM configuring a table or placing an image in Edit Mode sees the identical structure when switching to Play Mode — ahead of the dispatch consolidation that lands in ticket 02.
+
+**Blocked by:** typed-component-data 02 — cutover. That ticket makes `SessionComponent.data` a typed `ComponentData` and gives the three existing per-kind widgets their internal-cast pattern (`final d = component.data as ...`); both new widgets are written the same way, against `CustomTableData` and `ImageData`, not against the untyped map the four current private classes read from.
+
+**Status:** done
+
+- [x] Two new widget files exist under `master/session/components/`, alongside the existing three, each exposing a widget with the same `(component, isEditMode, onUpdate)` constructor shape as its siblings
+- [x] For the custom table: payload parsing (via an internal cast to `CustomTableData`, matching the pattern the cutover gives the other three widgets), the table rendering, the empty-state placeholder for an unconfigured table, and the title/caption exist exactly once — not once per screen
+- [x] For the image: payload parsing (via an internal cast to `ImageData`), the image preview, the empty-state placeholder for a missing path, and the caption exist exactly once
+- [x] Custom table: `isEditMode: true` shows the configure/edit affordance and its dialog, `isEditMode: false` hides it; the table structure itself does not otherwise differ
+- [x] Image: `isEditMode: true` shows a compact preview sized for a list card plus the edit affordance, `isEditMode: false` shows a larger preview sized for a single Play Mode screen with no edit affordance; the two differ in density only, not in structure or code path
+- [x] Editing a table's title or headers, or an image's title, path, or caption, through the dialog calls `onUpdate` with the updated `SessionComponent`, from both the edit-screen and play-screen call sites
+- [x] The edit screen's component card and the play screen's component renderer both call the new widgets for custom table and image components, in place of their previous private classes
+- [x] All four private classes (custom table and image, once in the edit screen and once in the play screen) are deleted; nothing else references them
+- [x] New widget tests pump each widget with its payload and assert: the content (or empty-state placeholder) renders, and the edit affordance is present when `isEditMode: true` and absent when `isEditMode: false`
+- [x] `flutter analyze` is clean; `flutter test` is green

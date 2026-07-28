@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <title>Architecture review — RPBoard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({ startOnLoad: true, theme: "neutral", securityLevel: "loose" });
+    </script>
+    <style>
+      .seam { stroke-dasharray: 4 4; }
+      .deep { background: linear-gradient(135deg, #0f172a, #1e293b); }
+      .lbl { font-size: .65rem; text-transform: uppercase; letter-spacing: .08em; }
+    </style>
+  </head>
+  <body class="bg-stone-50 text-slate-900 font-sans">
+    <main class="max-w-5xl mx-auto px-6 py-12 space-y-14">
+
+      <header class="space-y-4">
+        <h1 class="font-serif text-4xl">Architecture review — D&amp;D Board</h1>
+        <p class="text-sm text-slate-500">20 luglio 2026 · 6.029 righe Dart · 1 file di test (su dead code)</p>
+        <div class="flex flex-wrap gap-4 text-xs text-slate-600 border-t border-slate-200 pt-4">
+          <span><span class="inline-block w-4 h-3 border border-slate-400 align-middle"></span> box pieno = module</span>
+          <span><span class="inline-block w-4 h-0 border-t-2 border-dashed border-slate-400 align-middle"></span> tratteggio = seam</span>
+          <span><span class="inline-block w-4 h-0 border-t-2 border-red-600 align-middle"></span> rosso = leakage</span>
+          <span><span class="inline-block w-4 h-3 deep align-middle"></span> box scuro spesso = deep module</span>
+        </div>
+      </header>
+
+      <section id="candidates" class="space-y-12">
+
+        <!-- ══════════ C1 ══════════ -->
+        <article id="c1" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C1 — Chiudere la migrazione <span class="font-mono text-lg">ComponentData</span></h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">Strong</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">in-process</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">lib/models/component.dart · session_edit_screen.dart · session_play_screen.dart · components/*.dart</p>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="lbl text-slate-500 mb-3">Before — 5 switch da sincronizzare</p>
+              <pre class="mermaid">
+flowchart TB
+  NEW[nuovo kind di SessionComponent]
+  NEW --> S1[ComponentType enum]
+  NEW --> S2[ComponentTypeLabel.label]
+  NEW --> S3[ComponentDefaults.forType]
+  NEW --> S4["_buildComponentContent (edit)"]
+  NEW --> S5["_PlayComponent (play)"]
+  NEW --> S6["_componentIcon"]
+  S3 -.-> MAP["data: Map&lt;String,dynamic&gt;"]
+  S4 -.-> MAP
+  S5 -.-> MAP
+  DEAD["sealed ComponentData<br/>(dead code)"]
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#dc2626;
+  classDef dead stroke-dasharray: 5 5,color:#94a3b8;
+  class MAP leak
+  class DEAD dead
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4">
+              <p class="lbl text-slate-500 mb-3">After — un solo punto di verità</p>
+              <pre class="mermaid">
+flowchart TB
+  NEW[nuovo kind di SessionComponent] --> SUB["nuova subclass ComponentData<br/>dbKey · fromJson · toJson · empty()"]
+  SUB --> REG[ComponentData.fromDb registry]
+  REG --> REN["render(data, isEditMode)<br/>switch esaustivo dal compilatore"]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:3px;
+  class SUB deep
+              </pre>
+            </div>
+          </div>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd>Due rappresentazioni parallele dello stesso payload: il <span class="font-mono">Map</span> non tipizzato è live, la sealed class <span class="font-mono">ComponentData</span> è dead code — la forma di ogni kind è scritta 3 volte (defaults, fromJson, toJson) e dispatchata da 5 switch.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>Sostituire <span class="font-mono">SessionComponent.data</span> con <span class="font-mono">ComponentData</span>, spostare <span class="font-mono">ComponentDefaults</span> dentro ogni subclass come factory <span class="font-mono">empty()</span>, eliminare l'enum <span class="font-mono">ComponentType</span>; <span class="font-mono">dbKey</span> resta la stringa persistita.</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>locality: un kind = un file, una classe</li>
+            <li>leverage: il compilatore forza l'esaustività</li>
+            <li>l'interface si restringe, l'implementation assorbe i 5 switch</li>
+            <li>il test esistente smette di testare dead code</li>
+            <li><span class="font-mono">UnknownComponentData</span> smette di essere teorico</li>
+            <li>nessuna migration DB: <span class="font-mono">dbKey</span> == <span class="font-mono">enum.name</span></li>
+          </ul>
+
+          <div class="rounded bg-amber-50 border border-amber-300 p-3 text-sm">
+            Allineato ad ADR-0001 — non lo contraddice, lo <em>completa</em>. Punti 1 e 2 di "Known gaps" chiusi insieme.
+          </div>
+        </article>
+
+        <!-- ══════════ C2 ══════════ -->
+        <article id="c2" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C2 — Un seam davanti alla persistence</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">Strong</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">local-substitutable</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">lib/core/database/db.dart · providers/campaign_provider.dart · 9 call site diretti nelle screens</p>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="lbl text-slate-500 mb-3">Before — singleton raggiunto da ovunque</p>
+              <pre class="mermaid">
+flowchart LR
+  CS[CharacterSheetScreen] --> DB
+  CAS[CampaignScreen] --> DB
+  CHS[ChapterScreen] --> DB
+  SE[SessionEditScreen] --> DB
+  SP[SessionPlayScreen] --> DB
+  PROV[providers] --> DB
+  DB["AppDatabase.instance<br/>singleton statico"]
+  DB --> SQL[(sqflite file)]
+  classDef leak stroke:#dc2626,stroke-width:2px,color:#dc2626;
+  class DB,SQL leak
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4">
+              <p class="lbl text-slate-500 mb-3">After — due adapter dietro un seam</p>
+              <pre class="mermaid">
+flowchart LR
+  UI[screens] --> PROV[providers]
+  PROV --> P["databaseProvider<br/>(seam)"]
+  P -.-> A1[SqfliteDatabase]
+  P -.-> A2["InMemoryDatabase<br/>(test)"]
+  A1 --> SQL[(sqflite file)]
+  classDef deep fill:#0f172a,color:#fff,stroke:#0f172a,stroke-width:3px;
+  class P deep
+              </pre>
+            </div>
+          </div>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd><span class="font-mono">AppDatabase.instance</span> è un singleton statico letto direttamente da 5 screens oltre che dai providers: non esiste un seam dove sostituire la persistence, quindi niente di sopra è testabile e la suite si ferma a 1 file su dead code.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>Estrarre l'interface (5 famiglie CRUD), esporla come <span class="font-mono">databaseProvider</span> Riverpod, iniettarla nei notifier via <span class="font-mono">ref.read</span>; le screens smettono di parlare col DB e passano dai providers.</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>due adapter reali giustificano il seam</li>
+            <li>l'interface diventa la test surface</li>
+            <li>locality: accesso ai dati in un solo strato</li>
+            <li>widget test possibili con <span class="font-mono">ProviderScope(overrides:)</span></li>
+          </ul>
+        </article>
+
+        <!-- ══════════ C3 ══════════ -->
+        <article id="c3" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C3 — Un module per il riordino ordinato</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">Strong</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">in-process</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">campaign_screen.dart:187 · chapter_screen.dart:132 · session_edit_screen.dart:162-171</p>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[320px] flex flex-col justify-center gap-3">
+              <p class="lbl text-slate-500">Before — stessa logica in 3 screens</p>
+              <div class="space-y-2">
+                <div class="border border-red-400 rounded p-2 text-xs font-mono bg-white">campaign_screen<br/><span class="text-red-600">removeAt · insert · loop update · invalidate</span></div>
+                <div class="border border-red-400 rounded p-2 text-xs font-mono bg-white">chapter_screen<br/><span class="text-red-600">removeAt · insert · loop update · invalidate</span></div>
+                <div class="border border-red-400 rounded p-2 text-xs font-mono bg-white">session_edit_screen<br/><span class="text-red-600">removeAt · insert · loop update · invalidate</span></div>
+              </div>
+              <p class="text-xs text-red-700">N update non transazionali · muta la lista dentro l'AsyncValue</p>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px] flex flex-col justify-center gap-3">
+              <p class="lbl text-slate-500">After — un deep module, 3 call site</p>
+              <div class="flex gap-2 text-xs font-mono">
+                <div class="border border-slate-300 rounded p-2 flex-1 text-slate-500">campaign</div>
+                <div class="border border-slate-300 rounded p-2 flex-1 text-slate-500">chapter</div>
+                <div class="border border-slate-300 rounded p-2 flex-1 text-slate-500">session</div>
+              </div>
+              <svg viewBox="0 0 300 30" class="w-full h-6"><path d="M50 0 L150 25 M150 0 L150 25 M250 0 L150 25" stroke="#0f172a" stroke-width="1.5" fill="none"/><path d="M145 20 L150 28 L155 20" fill="#0f172a"/></svg>
+              <div class="deep text-white rounded p-3 text-xs font-mono">reorder&lt;T extends Ordered&gt;(list, old, new)<br/><span class="text-slate-400">— reindex in memoria<br/>— una transaction<br/>— restituisce la nuova lista</span></div>
+            </div>
+          </div>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd>Il riordino è copiato in 3 screens, muta in place la lista posseduta dal provider e scrive N righe senza transaction: un crash a metà lascia gli <span class="font-mono">order_index</span> incoerenti.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>Un module <span class="font-mono">reorder</span> generico su un contratto <span class="font-mono">Ordered</span> (id + order), con la scrittura in una sola transaction dietro l'interface della persistence.</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>leverage: una interface, 3 call site</li>
+            <li>locality: i bug di ordinamento in un module</li>
+            <li>testabile senza Flutter</li>
+            <li>scrittura atomica, niente stato incoerente</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ C4 ══════════ -->
+        <article id="c4" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C4 — Single-item provider per Campaign / Chapter / SessionScreen</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-amber-100 text-amber-800 text-xs font-semibold">Worth exploring</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">in-process</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">campaign_screen.dart:46 · chapter_screen.dart:37 · session_edit_screen.dart:41 · session_play_screen.dart:42 · character_sheet_screen.dart:44,116</p>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4">
+              <p class="lbl text-slate-500 mb-3">Before — due sorgenti di verità</p>
+              <pre class="mermaid">
+sequenceDiagram
+  participant S as SessionEditScreen
+  participant P as componentListProvider
+  participant DB as AppDatabase
+  S->>DB: getScreens(chapterId)
+  DB-->>S: List (filtra in memoria)
+  S->>S: setState(_screen)
+  S->>P: watch(components)
+  Note over S,P: _screen fuori dal grafo Riverpod<br/>non si invalida mai
+              </pre>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4">
+              <p class="lbl text-slate-500 mb-3">After — una sola sorgente</p>
+              <pre class="mermaid">
+sequenceDiagram
+  participant S as SessionEditScreen
+  participant P as screenProvider(screenId)
+  participant DB as Database seam
+  S->>P: watch
+  P->>DB: getScreen(id)
+  DB-->>P: SessionScreen
+  P-->>S: AsyncValue
+  Note over S,P: invalidate ⇒ la UI si aggiorna
+              </pre>
+            </div>
+          </div>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd>Ogni screen carica la propria entità in <span class="font-mono">initState</span> con una query di lista filtrata in memoria e la tiene in <span class="font-mono">setState</span>: stato duplicato fuori dal grafo Riverpod, che dopo una mutazione resta stale (visibile su <span class="font-mono">CharacterSheetScreen</span>, che salva col debounce direttamente sul DB e lascia <span class="font-mono">characterListProvider</span> indietro).</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>Aggiungere provider family per singola entità (<span class="font-mono">campaignProvider</span>, <span class="font-mono">chapterProvider</span>, <span class="font-mono">screenProvider</span>, <span class="font-mono">characterProvider</span>) e far passare da lì anche i salvataggi.</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>locality: un'entità, una sorgente</li>
+            <li>elimina il pattern informale <span class="font-mono">initState</span> + DB</li>
+            <li>niente liste caricate per leggere 1 riga</li>
+            <li>dipende da C2 (serve il seam)</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ C5 ══════════ -->
+        <article id="c5" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C5 — Un solo renderer per SessionComponent</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">Strong</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">in-process</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">session_edit_screen.dart:229-430 · session_play_screen.dart:182-291 · components/*.dart</p>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[320px] flex flex-col justify-center gap-2 text-xs font-mono">
+              <p class="lbl text-slate-500 font-sans">Before — 3 kind condivisi, 2 duplicati</p>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="space-y-1">
+                  <p class="text-slate-500 font-sans lbl">edit</p>
+                  <div class="border border-slate-300 rounded p-1 bg-white">NarrativeWidget</div>
+                  <div class="border border-slate-300 rounded p-1 bg-white">NpcStatBlockWidget</div>
+                  <div class="border border-slate-300 rounded p-1 bg-white">InitiativeTrackerWidget</div>
+                  <div class="border border-red-400 text-red-700 rounded p-1 bg-white">_CustomTableWidget</div>
+                  <div class="border border-red-400 text-red-700 rounded p-1 bg-white">_ImageWidget</div>
+                </div>
+                <div class="space-y-1">
+                  <p class="text-slate-500 font-sans lbl">play</p>
+                  <div class="border border-slate-300 rounded p-1 bg-white">NarrativeWidget</div>
+                  <div class="border border-slate-300 rounded p-1 bg-white">NpcStatBlockWidget</div>
+                  <div class="border border-slate-300 rounded p-1 bg-white">InitiativeTrackerWidget</div>
+                  <div class="border border-red-400 text-red-700 rounded p-1 bg-white">_TableView</div>
+                  <div class="border border-red-400 text-red-700 rounded p-1 bg-white">_ImageView</div>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px] flex flex-col justify-center gap-3 text-xs font-mono">
+              <p class="lbl text-slate-500 font-sans">After — un registry, 5 file simmetrici</p>
+              <div class="flex gap-2">
+                <div class="border border-slate-300 rounded p-2 flex-1 text-center text-slate-500">edit</div>
+                <div class="border border-slate-300 rounded p-2 flex-1 text-center text-slate-500">play</div>
+              </div>
+              <svg viewBox="0 0 300 24" class="w-full h-5"><path d="M80 0 L150 20 M220 0 L150 20" stroke="#0f172a" stroke-width="1.5" fill="none"/><path d="M145 15 L150 23 L155 15" fill="#0f172a"/></svg>
+              <div class="deep text-white rounded p-3">componentRenderer(data, isEditMode, onUpdate)</div>
+              <div class="grid grid-cols-5 gap-1 text-[10px] text-center">
+                <div class="border border-slate-300 rounded p-1">narrative</div>
+                <div class="border border-slate-300 rounded p-1">npc</div>
+                <div class="border border-slate-300 rounded p-1">initiative</div>
+                <div class="border border-slate-300 rounded p-1">table</div>
+                <div class="border border-slate-300 rounded p-1">image</div>
+              </div>
+            </div>
+          </div>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd><span class="font-mono">customTable</span> e <span class="font-mono">image</span> non hanno un file proprio: sono classi private duplicate tra edit e play (~180 righe), e il dispatch per kind è scritto due volte.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>Un file per kind come gli altri tre, più un module di render unico che riceve <span class="font-mono">isEditMode</span>; edit e play chiamano lo stesso.</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>leverage: una interface, 2 call site</li>
+            <li>locality: un kind, un file</li>
+            <li>~180 righe duplicate cancellate</li>
+            <li>si compone con C1 (dispatch tipizzato)</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ C6 ══════════ -->
+        <article id="c6" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C6 — Percorso di migration dello schema</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-800 text-xs font-semibold">Strong</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">local-substitutable</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">lib/core/database/db.dart:30-138</p>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[320px] flex flex-col justify-center gap-2">
+              <p class="lbl text-slate-500">Before — un solo gradino</p>
+              <div class="border-l-4 border-slate-800 pl-3 py-2 bg-white text-xs font-mono">v1 · _onCreate (105 righe DDL)</div>
+              <div class="border-l-4 border-red-500 pl-3 py-2 bg-white text-xs font-mono text-red-700">onUpgrade: assente</div>
+              <p class="text-xs text-red-700 mt-2">Il DB dell'utente è già sul disco. Prima modifica di schema ⇒ dati inaccessibili o app che crasha all'avvio.</p>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px] flex flex-col justify-center gap-2">
+              <p class="lbl text-slate-500">After — scala di migration</p>
+              <div class="border-l-4 border-slate-800 pl-3 py-1.5 text-xs font-mono bg-stone-50">v1 → v2 · migration step</div>
+              <div class="border-l-4 border-slate-800 pl-3 py-1.5 text-xs font-mono bg-stone-50">v2 → v3 · migration step</div>
+              <div class="deep text-white rounded p-3 text-xs font-mono mt-2">Migrations.runFrom(oldV, newV)<br/><span class="text-slate-400">lista ordinata, testabile a secco</span></div>
+            </div>
+          </div>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd>Schema v1 senza <span class="font-mono">onUpgrade</span>: qualsiasi cambio di schema futuro rompe i DB già installati, e ADR-0001 congela i <span class="font-mono">dbKey</span> proprio perché quel percorso non esiste.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>Un module <span class="font-mono">Migrations</span> con una lista ordinata di step e <span class="font-mono">onUpgrade</span> che li applica; <span class="font-mono">_onCreate</span> diventa "applica tutti gli step da 0".</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>sblocca ogni cambio di schema futuro</li>
+            <li>testabile con DB in-memory (dipende da C2)</li>
+            <li>locality: DDL in un module</li>
+            <li>prerequisito se si vuole rinominare un <span class="font-mono">dbKey</span></li>
+          </ul>
+        </article>
+
+        <!-- ══════════ C7 ══════════ -->
+        <article id="c7" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C7 — Scomporre <span class="font-mono text-lg">CharacterSheetScreen</span></h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-amber-100 text-amber-800 text-xs font-semibold">Worth exploring</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">in-process</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">lib/screens/pg/character_sheet_screen.dart (1.260 righe) · lib/models/character.dart</p>
+
+          <div class="grid grid-cols-2 gap-5">
+            <div class="rounded-lg border border-slate-200 bg-stone-50 p-4 h-[320px] flex flex-col justify-center gap-2">
+              <p class="lbl text-slate-500 mb-1">Before — mass diagram</p>
+              <div class="flex gap-3 items-end h-[200px]">
+                <div class="flex-1 flex flex-col items-center gap-1">
+                  <div class="w-full bg-slate-300 rounded-t" style="height:150px"></div>
+                  <span class="lbl text-slate-500">interface (7 tab + regole D&amp;D)</span>
+                </div>
+                <div class="flex-1 flex flex-col items-center gap-1">
+                  <div class="w-full bg-slate-700 rounded-t" style="height:170px"></div>
+                  <span class="lbl text-slate-500">implementation</span>
+                </div>
+              </div>
+              <p class="text-xs text-red-700">Regole (modificatori, proficiency, slot, tiri morte) mescolate al layout; salvataggio debounced che scrive dritto sul DB.</p>
+            </div>
+            <div class="rounded-lg border border-slate-800 bg-white p-4 h-[320px] flex flex-col justify-center gap-2">
+              <p class="lbl text-slate-500 mb-1">After</p>
+              <div class="flex gap-3 items-end h-[200px]">
+                <div class="flex-1 flex flex-col items-center gap-1">
+                  <div class="w-full bg-slate-300 rounded-t" style="height:40px"></div>
+                  <span class="lbl text-slate-500">interface</span>
+                </div>
+                <div class="flex-1 flex flex-col items-center gap-1">
+                  <div class="w-full deep rounded-t" style="height:180px"></div>
+                  <span class="lbl text-slate-500">implementation: regole Character</span>
+                </div>
+              </div>
+              <p class="text-xs text-slate-600">Le regole scendono nel model Character; i 7 tab diventano widget sottili sopra un provider.</p>
+            </div>
+          </div>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd>Il file più grande del repo tiene insieme layout, regole di gioco e persistence debounced: le regole non sono raggiungibili senza montare la UI, quindi non sono testate.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>Spostare i calcoli derivati (modificatori, proficiency bonus, slot, tiri salvezza contro morte) dentro <span class="font-mono">Character</span> come module puro, e far passare il salvataggio da <span class="font-mono">characterProvider</span>.</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>l'interface si restringe, l'implementation assorbe le regole</li>
+            <li>locality: le regole D&amp;D in un module</li>
+            <li>test senza Flutter</li>
+            <li>più grande dei precedenti: da fare dopo C2/C4</li>
+          </ul>
+        </article>
+
+        <!-- ══════════ C8 ══════════ -->
+        <article id="c8" class="rounded-xl border border-slate-200 bg-white p-7 space-y-5">
+          <div class="flex items-start justify-between gap-4">
+            <h2 class="font-serif text-2xl">C8 — "Scena" → SessionScreen nella copy</h2>
+            <div class="flex gap-2 shrink-0">
+              <span class="px-2 py-1 rounded bg-slate-200 text-slate-700 text-xs font-semibold">Speculative</span>
+              <span class="px-2 py-1 rounded bg-slate-100 text-slate-700 text-xs">in-process</span>
+            </div>
+          </div>
+
+          <p class="font-mono text-sm text-slate-600">chapter_screen.dart:43,117 · session_edit_screen.dart:69,110 · session_play_screen.dart:133</p>
+
+          <dl class="space-y-2 text-sm">
+            <div><dt class="lbl text-slate-500">Problem</dt><dd>CONTEXT.md vieta esplicitamente "scena"/"slide" per SessionScreen, ma è il termine mostrato all'utente in tutto Master Mode: il codice e il glossario divergono.</dd></div>
+            <div><dt class="lbl text-slate-500">Solution</dt><dd>O si allinea la copy al glossario, o si registra "Scena" come termine <em>user-facing</em> di SessionScreen in CONTEXT.md. Serve una decisione tua — non è refactor, è vocabolario.</dd></div>
+          </dl>
+
+          <ul class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm list-disc list-inside marker:text-emerald-600">
+            <li>5 stringhe, costo quasi zero</li>
+            <li>tiene onesto il glossario per chi legge dopo</li>
+          </ul>
+        </article>
+
+      </section>
+
+      <!-- ══════════ TOP ══════════ -->
+      <section id="top-recommendation" class="rounded-xl border-2 border-slate-900 bg-white p-8 space-y-4">
+        <p class="lbl text-slate-500">Da dove partirei</p>
+        <h2 class="font-serif text-3xl"><a href="#c2" class="underline decoration-emerald-500 decoration-2">C2 — Un seam davanti alla persistence</a></h2>
+        <p class="text-sm max-w-2xl">Senza quel seam nessun altro intervento è verificabile: la suite è un file su dead code, e C3, C4, C6 e C7 diventano tutti testabili solo dopo. È anche il più economico — l'interface esiste già dentro <span class="font-mono">AppDatabase</span>, va solo estratta e iniettata.</p>
+        <p class="text-sm text-slate-600">Ordine consigliato: <span class="font-mono">C2 → C1 → C5 → C3 → C4 → C6 → C7 → C8</span>. C1 e C5 si compongono: il dispatch tipizzato e il renderer unico vanno fatti nello stesso passaggio.</p>
+      </section>
+
+    </main>
+  </body>
+</html>
