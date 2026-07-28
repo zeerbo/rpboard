@@ -7,7 +7,7 @@
 #endif
 
 #define MyAppName "RPBoard"
-#define MyAppPublisher "com.lucaz"
+#define MyAppPublisher "com.zeerbo"
 #define MyAppExeName "rpboard.exe"
 #define ReleaseDir "..\build\windows\x64\runner\Release"
 #define DataFolderName "rpboard"
