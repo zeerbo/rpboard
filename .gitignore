@@ -43,3 +43,7 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Windows installer build artifacts
+/installer/output/
+/installer/vc_redist.x64.exe
