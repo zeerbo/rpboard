@@ -58,6 +58,19 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Taps the death-save checkbox at [index]. The Combattimento tab body is
+  /// a `SingleChildScrollView`, and adding the Armatura section (ticket 01)
+  /// pushed the death-save row further down than the fixed 800x600 test
+  /// viewport shows by default — `ensureVisible` scrolls it into view first,
+  /// same as `tapTab` already does for tabs past the visible `TabBar`.
+  Future<void> tapDeathSaveCheckbox(WidgetTester tester, int index) async {
+    final finder = find.byType(Checkbox).at(index);
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    await tester.tap(finder);
+    await tester.pump();
+  }
+
   setUp(() {
     db = InMemoryDatabase();
     container = ProviderContainer(
@@ -130,6 +143,34 @@ void main() {
       await unmountSheet(tester);
     });
 
+    testWidgets('adding an armor writes it through and updates the shown final CA', (tester) async {
+      // Manual CA 10, no armor: the "CA Finale" chip starts at the manual value.
+      await db.insertCharacter(Character(id: 'c1', name: 'Aragorn', armorClass: 10));
+      await pumpSheet(tester, 'c1');
+
+      await tapTab(tester, 'Combattimento');
+      expect(container.read(characterProvider('c1')).value?.armor, isNull);
+
+      // Open the armor dialog, enter a fixed base CA of 16, save.
+      final addButton = find.text('Aggiungi Armatura');
+      await tester.ensureVisible(addButton);
+      await tester.pumpAndSettle();
+      await tester.tap(addButton);
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.widgetWithText(TextField, 'CA Base'), '16');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Salva'));
+      await tester.pumpAndSettle();
+
+      final c = container.read(characterProvider('c1')).value!;
+      expect(c.armor, isNotNull);
+      expect(c.armor!.baseAc, 16);
+      expect(c.armorClassEffective, 16);
+      // The prominent "CA Finale" chip now reflects the armor-derived CA.
+      expect(find.text('16'), findsWidgets);
+      await unmountSheet(tester);
+    });
+
     testWidgets('ticking a death-save box writes through; switching tabs preserves the tick', (tester) async {
       await db.insertCharacter(Character(id: 'c1', name: 'Aragorn'));
       await pumpSheet(tester, 'c1');
@@ -137,8 +178,7 @@ void main() {
       await tapTab(tester, 'Combattimento');
 
       // 6 checkboxes: 0-2 = Successi, 3-5 = Fallimenti.
-      await tester.tap(find.byType(Checkbox).at(0));
-      await tester.pump();
+      await tapDeathSaveCheckbox(tester, 0);
 
       expect(container.read(characterProvider('c1')).value?.deathSaveSuccesses, 1);
 
@@ -156,12 +196,9 @@ void main() {
       await tapTab(tester, 'Combattimento');
 
       // Failure checkboxes are indices 3, 4, 5.
-      await tester.tap(find.byType(Checkbox).at(3));
-      await tester.pump();
-      await tester.tap(find.byType(Checkbox).at(4));
-      await tester.pump();
-      await tester.tap(find.byType(Checkbox).at(5));
-      await tester.pump();
+      await tapDeathSaveCheckbox(tester, 3);
+      await tapDeathSaveCheckbox(tester, 4);
+      await tapDeathSaveCheckbox(tester, 5);
 
       final c = container.read(characterProvider('c1')).value!;
       expect(c.isDead, isTrue);
@@ -175,12 +212,9 @@ void main() {
 
       await tapTab(tester, 'Combattimento');
 
-      await tester.tap(find.byType(Checkbox).at(0));
-      await tester.pump();
-      await tester.tap(find.byType(Checkbox).at(1));
-      await tester.pump();
-      await tester.tap(find.byType(Checkbox).at(2));
-      await tester.pump();
+      await tapDeathSaveCheckbox(tester, 0);
+      await tapDeathSaveCheckbox(tester, 1);
+      await tapDeathSaveCheckbox(tester, 2);
 
       final c = container.read(characterProvider('c1')).value!;
       expect(c.isStable, isTrue);

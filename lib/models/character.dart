@@ -96,6 +96,104 @@ class Spell {
       };
 }
 
+class Armor {
+  String name;
+  int baseAc;
+  bool addsDex;
+
+  Armor({this.name = '', this.baseAc = 10, this.addsDex = false});
+
+  factory Armor.fromJson(Map<String, dynamic> j) => Armor(
+        name: j['name'] ?? '',
+        baseAc: j['baseAc'] ?? 10,
+        addsDex: j['addsDex'] ?? false,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'baseAc': baseAc,
+        'addsDex': addsDex,
+      };
+}
+
+enum EquipmentBonusType { ac, attack, damage, initiative, speed, savingThrow, ability }
+
+enum EquipmentDamageForm { fixed, dice }
+
+/// A single configurable bonus on an EquipmentItem. One [type] plus the
+/// fields that type needs; unused fields keep harmless defaults. Global:
+/// bonuses apply across the whole sheet, never per-attack.
+class EquipmentBonus {
+  EquipmentBonusType type;
+  /// Integer magnitude for ac/attack/initiative/speed, and for damage when
+  /// [damageForm] is fixed.
+  int value;
+  /// For savingThrow/ability: one of 'str','dex','con','int','wis','cha' or
+  /// 'all'. Empty for other types.
+  String target;
+  /// For damage bonuses only: fixed magnitude vs a dice term.
+  EquipmentDamageForm damageForm;
+  /// For damage dice: number of dice and die faces (e.g. 3 and 8 => 3d8).
+  int diceCount;
+  int die;
+
+  EquipmentBonus({
+    this.type = EquipmentBonusType.ac,
+    this.value = 0,
+    this.target = '',
+    this.damageForm = EquipmentDamageForm.fixed,
+    this.diceCount = 0,
+    this.die = 0,
+  });
+
+  factory EquipmentBonus.fromJson(Map<String, dynamic> j) => EquipmentBonus(
+        type: _bonusTypeFromName(j['type']),
+        value: j['value'] ?? 0,
+        target: j['target'] ?? '',
+        damageForm: (j['damageForm'] == 'dice')
+            ? EquipmentDamageForm.dice
+            : EquipmentDamageForm.fixed,
+        diceCount: j['diceCount'] ?? 0,
+        die: j['die'] ?? 0,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'type': type.name,
+        'value': value,
+        'target': target,
+        'damageForm': damageForm.name,
+        'diceCount': diceCount,
+        'die': die,
+      };
+}
+
+/// Tolerant enum parse: unknown/missing names fall back to `ac`, never throw.
+EquipmentBonusType _bonusTypeFromName(Object? name) {
+  for (final t in EquipmentBonusType.values) {
+    if (t.name == name) return t;
+  }
+  return EquipmentBonusType.ac;
+}
+
+class EquipmentItem {
+  String name;
+  List<EquipmentBonus> bonuses;
+  EquipmentItem({this.name = '', List<EquipmentBonus>? bonuses})
+      : bonuses = bonuses ?? [];
+
+  factory EquipmentItem.fromJson(Map<String, dynamic> j) => EquipmentItem(
+        name: j['name'] ?? '',
+        bonuses: ((j['bonuses'] as List?) ?? [])
+            .map((b) => EquipmentBonus.fromJson(b as Map<String, dynamic>))
+            .toList(),
+      );
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'bonuses': bonuses.map((b) => b.toJson()).toList(),
+      };
+}
+
 class InventoryItem {
   String name;
   int quantity;
@@ -252,6 +350,10 @@ class Character {
   // Attacks
   List<Attack> attacks;
 
+  // Equipment
+  Armor? armor;
+  List<EquipmentItem> equipment;
+
   // Spellcasting
   String spellcastingAbility;
   List<SpellSlot> spellSlots;
@@ -314,6 +416,8 @@ class Character {
     this.skin = '',
     this.hair = '',
     List<Attack>? attacks,
+    this.armor,
+    List<EquipmentItem>? equipment,
     this.spellcastingAbility = '',
     List<SpellSlot>? spellSlots,
     List<Spell>? spells,
@@ -323,6 +427,7 @@ class Character {
         skillExpertise = skillExpertise ?? [],
         inventory = inventory ?? [],
         attacks = attacks ?? [],
+        equipment = equipment ?? [],
         spellSlots = spellSlots ?? [],
         spells = spells ?? [];
 
@@ -336,12 +441,69 @@ class Character {
 
   int mod(int score) => ((score - 10) / 2).floor();
 
-  int get strMod => mod(strength);
-  int get dexMod => mod(dexterity);
-  int get conMod => mod(constitution);
-  int get intMod => mod(intelligence);
-  int get wisMod => mod(wisdom);
-  int get chaMod => mod(charisma);
+  /// Sums the `.value` of all bonuses of [type] whose target matches
+  /// [ability] exactly or is the 'all' sentinel — for `ability` and
+  /// `savingThrow` bonuses, which carry a target.
+  int sumTargetedBonus(EquipmentBonusType type, String ability) {
+    var total = 0;
+    for (final item in equipment) {
+      for (final b in item.bonuses) {
+        if (b.type == type && (b.target == ability || b.target == 'all')) {
+          total += b.value;
+        }
+      }
+    }
+    return total;
+  }
+
+  // ── Effective ability scores ─────────────────────────────────────────────
+  //
+  // Nude score plus any equipment `ability` bonuses targeting that ability
+  // (or 'all'). The six *Mod getters below read these instead of the nude
+  // fields, so every derivation built on them (abilityMod, skillBonus,
+  // savingThrowBonus, spellcasting) propagates automatically.
+
+  int get effectiveStrength => strength + sumTargetedBonus(EquipmentBonusType.ability, 'str');
+  int get effectiveDexterity => dexterity + sumTargetedBonus(EquipmentBonusType.ability, 'dex');
+  int get effectiveConstitution => constitution + sumTargetedBonus(EquipmentBonusType.ability, 'con');
+  int get effectiveIntelligence => intelligence + sumTargetedBonus(EquipmentBonusType.ability, 'int');
+  int get effectiveWisdom => wisdom + sumTargetedBonus(EquipmentBonusType.ability, 'wis');
+  int get effectiveCharisma => charisma + sumTargetedBonus(EquipmentBonusType.ability, 'cha');
+
+  /// Effective (post-equipment) score for an ability key ('str'…'cha'), for
+  /// the UI badge. Defaults to 10 for an unrecognized key.
+  int effectiveAbilityScore(String ability) {
+    switch (ability) {
+      case 'str': return effectiveStrength;
+      case 'dex': return effectiveDexterity;
+      case 'con': return effectiveConstitution;
+      case 'int': return effectiveIntelligence;
+      case 'wis': return effectiveWisdom;
+      case 'cha': return effectiveCharisma;
+      default: return 10;
+    }
+  }
+
+  /// Nude (pre-equipment) score for an ability key ('str'…'cha'), for the UI
+  /// badge. Defaults to 10 for an unrecognized key.
+  int nudeAbilityScore(String ability) {
+    switch (ability) {
+      case 'str': return strength;
+      case 'dex': return dexterity;
+      case 'con': return constitution;
+      case 'int': return intelligence;
+      case 'wis': return wisdom;
+      case 'cha': return charisma;
+      default: return 10;
+    }
+  }
+
+  int get strMod => mod(effectiveStrength);
+  int get dexMod => mod(effectiveDexterity);
+  int get conMod => mod(effectiveConstitution);
+  int get intMod => mod(effectiveIntelligence);
+  int get wisMod => mod(effectiveWisdom);
+  int get chaMod => mod(effectiveCharisma);
 
   int abilityMod(String ability) {
     switch (ability) {
@@ -355,6 +517,90 @@ class Character {
     }
   }
 
+  /// Sums the `value` of every equipment bonus of [type] across all
+  /// [equipment] items. Public: later tickets (and tests) reuse this for
+  /// their own bonus types.
+  int sumEquipmentBonus(EquipmentBonusType type) {
+    var total = 0;
+    for (final item in equipment) {
+      for (final b in item.bonuses) {
+        if (b.type == type) total += b.value;
+      }
+    }
+    return total;
+  }
+
+  /// The character's final AC. With [armor] set, the base is the armor's
+  /// `baseAc` plus [dexMod] when `addsDex` is true, or `baseAc` exactly when
+  /// it's false (a fixed CA). Without armor, the base is the manual
+  /// [armorClass] field the player typed in directly. On top of that base,
+  /// every equipped item's additive `ac` bonus is summed in.
+  int get armorClassEffective {
+    final base = armor != null
+        ? (armor!.addsDex ? armor!.baseAc + dexMod : armor!.baseAc)
+        : armorClass;
+    return base + sumEquipmentBonus(EquipmentBonusType.ac);
+  }
+
+  /// Initiative including equipment `initiative` bonuses, over the nude
+  /// [initiativeBonus] the player typed.
+  int get initiativeEffective =>
+      initiativeBonus + sumEquipmentBonus(EquipmentBonusType.initiative);
+
+  /// Speed including equipment `speed` bonuses, over the nude [speed].
+  int get speedEffective => speed + sumEquipmentBonus(EquipmentBonusType.speed);
+
+  /// Aggregation for a badge next to any equipment-affected field: the nude
+  /// [base] the player typed, the [effective] total, and the [equip] share
+  /// (effective - base). When [equip] == 0 the UI shows no badge.
+  ({int base, int effective, int equip}) equipmentBadge(int base, int effective) =>
+      (base: base, effective: effective, equip: effective - base);
+
+  /// The equipment `attack` bonus applied globally to every attack.
+  int get attackEquipmentBonus => sumEquipmentBonus(EquipmentBonusType.attack);
+
+  /// For a given attack: the equipment share, and the computed total when
+  /// [Attack.attackBonus] is a pure integer (e.g. "+5" -> 5). When it isn't a
+  /// pure integer, [total] is null so the displayed total is never falsified,
+  /// while [equip] stays available to show alongside.
+  ({int? total, int equip}) attackWithEquipment(Attack a) {
+    final equip = attackEquipmentBonus;
+    final base = int.tryParse(a.attackBonus.trim()); // Dart parses a leading '+'
+    return (total: base == null ? null : base + equip, equip: equip);
+  }
+
+  /// Aggregates all equipment `damage` bonuses into a fixed part (summed) plus
+  /// the list of dice terms (e.g. 3d8). Empty/zero when there are none.
+  ({int fixed, List<({int count, int die})> dice}) equipmentDamageBonus() {
+    var fixed = 0;
+    final dice = <({int count, int die})>[];
+    for (final item in equipment) {
+      for (final b in item.bonuses) {
+        if (b.type != EquipmentBonusType.damage) continue;
+        if (b.damageForm == EquipmentDamageForm.fixed) {
+          fixed += b.value;
+        } else if (b.diceCount > 0 && b.die > 0) {
+          dice.add((count: b.diceCount, die: b.die));
+        }
+      }
+    }
+    return (fixed: fixed, dice: dice);
+  }
+
+  /// Display string for [equipmentDamageBonus], e.g. "+1", "+3d8", or
+  /// "+1 +3d8" (fixed first when nonzero, then each dice term). Null when
+  /// there's nothing to show, so the UI can conditionally render.
+  String? equipmentDamageLabel() {
+    final agg = equipmentDamageBonus();
+    if (agg.fixed == 0 && agg.dice.isEmpty) return null;
+    final parts = <String>[];
+    if (agg.fixed != 0) parts.add('${agg.fixed >= 0 ? "+" : ""}${agg.fixed}');
+    for (final d in agg.dice) {
+      parts.add('+${d.count}d${d.die}');
+    }
+    return parts.join(' ');
+  }
+
   int skillBonus(String skill) {
     final ability = kSkillAbility[skill] ?? 'dex';
     final base = abilityMod(ability);
@@ -363,10 +609,31 @@ class Character {
     return base;
   }
 
-  int savingThrowBonus(String ability) {
-    final base = abilityMod(ability);
-    if (savingThrowProfs.contains(ability)) return base + proficiencyBonus;
+  /// The skill bonus computed from NUDE ability scores, ignoring equipment
+  /// `ability` score bonuses — the value before equipment. A skill has no
+  /// direct equipment bonus type, so its equip share comes entirely through
+  /// the ability score; the UI shows `skillBonus(s) - skillBonusBase(s)`.
+  int skillBonusBase(String skill) {
+    final ability = kSkillAbility[skill] ?? 'dex';
+    final base = mod(nudeAbilityScore(ability));
+    if (skillExpertise.contains(skill)) return base + proficiencyBonus * 2;
+    if (skillProfs.contains(skill)) return base + proficiencyBonus;
     return base;
+  }
+
+  int savingThrowBonus(String ability) {
+    final base = abilityMod(ability); // already effective
+    final withProf = savingThrowProfs.contains(ability) ? base + proficiencyBonus : base;
+    return withProf + sumTargetedBonus(EquipmentBonusType.savingThrow, ability);
+  }
+
+  /// The saving-throw bonus computed from NUDE ability scores, ignoring all
+  /// equipment (both `ability` score bonuses and targeted `savingThrow`
+  /// bonuses) — i.e. the value before equipment. The equip share shown in
+  /// the UI is `savingThrowBonus(a) - savingThrowBonusBase(a)`.
+  int savingThrowBonusBase(String ability) {
+    final base = mod(nudeAbilityScore(ability));
+    return savingThrowProfs.contains(ability) ? base + proficiencyBonus : base;
   }
 
   String get passivePerception => '${10 + skillBonus('Percezione')}';
@@ -536,6 +803,26 @@ class Character {
       }
     }
 
+    Armor? parseArmor() {
+      final raw = m['armor'];
+      if (raw == null || (raw is String && raw.isEmpty)) return null;
+      try {
+        return Armor.fromJson(jsonDecode(raw as String) as Map<String, dynamic>);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    List<EquipmentItem> parseEquipment() {
+      try {
+        return (jsonDecode(m['equipment'] ?? '[]') as List)
+            .map((e) => EquipmentItem.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (_) {
+        return [];
+      }
+    }
+
     return Character(
       id: m['id'] as String,
       name: m['name'] ?? '',
@@ -590,6 +877,8 @@ class Character {
       skin: m['skin'] ?? '',
       hair: m['hair'] ?? '',
       attacks: parseAttacks(),
+      armor: parseArmor(),
+      equipment: parseEquipment(),
       spellcastingAbility: m['spellcasting_ability'] ?? '',
       spellSlots: parseSpellSlots(),
       spells: parseSpells(),
@@ -651,6 +940,8 @@ class Character {
         'skin': skin,
         'hair': hair,
         'attacks': jsonEncode(attacks.map((a) => a.toJson()).toList()),
+        'armor': armor == null ? null : jsonEncode(armor!.toJson()),
+        'equipment': jsonEncode(equipment.map((e) => e.toJson()).toList()),
         'spellcasting_ability': spellcastingAbility,
         'spell_slots': jsonEncode(spellSlots.map((s) => s.toJson()).toList()),
         'spells': jsonEncode(spells.map((s) => s.toJson()).toList()),

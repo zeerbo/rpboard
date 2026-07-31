@@ -71,18 +71,24 @@ class _StatisticheTabState extends State<StatisticheTab> {
                 label: 'FOR',
                 controller: _str,
                 modifier: fmtMod(c.strMod),
+                base: c.nudeAbilityScore('str'),
+                effective: c.effectiveAbilityScore('str'),
                 onChanged: (v) => _edit(() => c.strength = int.tryParse(v) ?? 10),
               ),
               _StatBox(
                 label: 'DES',
                 controller: _dex,
                 modifier: fmtMod(c.dexMod),
+                base: c.nudeAbilityScore('dex'),
+                effective: c.effectiveAbilityScore('dex'),
                 onChanged: (v) => _edit(() => c.dexterity = int.tryParse(v) ?? 10),
               ),
               _StatBox(
                 label: 'COS',
                 controller: _con,
                 modifier: fmtMod(c.conMod),
+                base: c.nudeAbilityScore('con'),
+                effective: c.effectiveAbilityScore('con'),
                 onChanged: (v) => _edit(() => c.constitution = int.tryParse(v) ?? 10),
               ),
             ],
@@ -95,18 +101,24 @@ class _StatisticheTabState extends State<StatisticheTab> {
                 label: 'INT',
                 controller: _int,
                 modifier: fmtMod(c.intMod),
+                base: c.nudeAbilityScore('int'),
+                effective: c.effectiveAbilityScore('int'),
                 onChanged: (v) => _edit(() => c.intelligence = int.tryParse(v) ?? 10),
               ),
               _StatBox(
                 label: 'SAG',
                 controller: _wis,
                 modifier: fmtMod(c.wisMod),
+                base: c.nudeAbilityScore('wis'),
+                effective: c.effectiveAbilityScore('wis'),
                 onChanged: (v) => _edit(() => c.wisdom = int.tryParse(v) ?? 10),
               ),
               _StatBox(
                 label: 'CAR',
                 controller: _cha,
                 modifier: fmtMod(c.chaMod),
+                base: c.nudeAbilityScore('cha'),
+                effective: c.effectiveAbilityScore('cha'),
                 onChanged: (v) => _edit(() => c.charisma = int.tryParse(v) ?? 10),
               ),
             ],
@@ -145,6 +157,10 @@ class _StatisticheTabState extends State<StatisticheTab> {
             label: s.$2,
             bonus: c.savingThrowBonus(s.$1),
             hasProficiency: hasProf,
+            trailing: EquipmentBadge(
+              base: c.savingThrowBonusBase(s.$1),
+              effective: c.savingThrowBonus(s.$1),
+            ),
             onToggle: () => _edit(() {
               if (hasProf) {
                 c.savingThrowProfs.remove(s.$1);
@@ -173,6 +189,10 @@ class _StatisticheTabState extends State<StatisticheTab> {
             bonus: c.skillBonus(skill),
             hasProficiency: hasProf,
             hasExpertise: hasExp,
+            trailing: EquipmentBadge(
+              base: c.skillBonusBase(skill),
+              effective: c.skillBonus(skill),
+            ),
             onToggle: () => _edit(() {
               if (hasExp) {
                 c.skillExpertise.remove(skill);
@@ -194,12 +214,16 @@ class _StatBox extends StatelessWidget {
   final String label;
   final TextEditingController controller;
   final String modifier;
+  final int base;
+  final int effective;
   final ValueChanged<String> onChanged;
 
   const _StatBox({
     required this.label,
     required this.controller,
     required this.modifier,
+    required this.base,
+    required this.effective,
     required this.onChanged,
   });
 
@@ -232,6 +256,8 @@ class _StatBox extends StatelessWidget {
             ),
             child: Text(modifier, textAlign: TextAlign.center, style: const TextStyle(color: AppTheme.onSurface, fontWeight: FontWeight.w600, fontSize: 14)),
           ),
+          const SizedBox(height: 4),
+          EquipmentBadge(base: base, effective: effective),
         ],
       );
 }
@@ -241,6 +267,7 @@ class _ProfRow extends StatelessWidget {
   final int bonus;
   final bool hasProficiency;
   final bool hasExpertise;
+  final Widget? trailing;
   final VoidCallback onToggle;
 
   const _ProfRow({
@@ -248,6 +275,7 @@ class _ProfRow extends StatelessWidget {
     required this.bonus,
     required this.hasProficiency,
     this.hasExpertise = false,
+    this.trailing,
     required this.onToggle,
   });
 
@@ -290,6 +318,10 @@ class _ProfRow extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              if (trailing != null) ...[
+                const SizedBox(width: 6),
+                trailing!,
+              ],
             ],
           ),
         ),

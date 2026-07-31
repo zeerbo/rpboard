@@ -197,4 +197,81 @@ void main() {
       expect(await schemaOf(upgraded), await schemaOf(fresh));
     },
   );
+
+  group('armor/equipment v1 -> v2 (ticket 01)', () {
+    // A second, test-owned fake ladder mimicking the real characters-table
+    // shape: a v1 CREATE TABLE, then a v2 step adding the same two ALTER
+    // statements productionLadder's v2 step adds. Kept separate from the
+    // three-step fakeLadder above (and from productionLadder) so this group
+    // reads standalone.
+    const armorLadder = <MigrationStep>[
+      MigrationStep(
+        version: 1,
+        statements: [
+          '''
+          CREATE TABLE characters (
+            id TEXT PRIMARY KEY,
+            name TEXT DEFAULT ''
+          )
+          ''',
+        ],
+      ),
+      MigrationStep(
+        version: 2,
+        statements: [
+          'ALTER TABLE characters ADD COLUMN armor TEXT DEFAULT NULL',
+          "ALTER TABLE characters ADD COLUMN equipment TEXT DEFAULT '[]'",
+        ],
+      ),
+    ];
+
+    const armorMigrations = Migrations(ladder: armorLadder);
+
+    test(
+      'upgrading a v1 characters row to v2 keeps the row and adds armor/equipment with correct defaults',
+      () async {
+        final db = await openFresh(
+          version: 1,
+          onCreate: (db, version) => armorMigrations.apply(db, 0, version),
+        );
+        addTearDown(db.close);
+
+        await db.insert('characters', {'id': 'pg1', 'name': 'Aria'});
+
+        await armorMigrations.apply(db, 1, 2);
+
+        final columns = await db.rawQuery('PRAGMA table_info(characters)');
+        expect(
+          columns.map((c) => c['name']),
+          containsAll(['id', 'name', 'armor', 'equipment']),
+        );
+
+        final rows = await db.query('characters', where: "id = 'pg1'");
+        expect(rows.single['name'], 'Aria');
+        expect(rows.single['armor'], isNull);
+        expect(rows.single['equipment'], '[]');
+      },
+    );
+
+    test(
+      'no drift: a fresh v2 characters table matches one upgraded from v1',
+      () async {
+        final upgraded = await openFresh(
+          version: 1,
+          onCreate: (db, version) => armorMigrations.apply(db, 0, version),
+        );
+        addTearDown(upgraded.close);
+        await upgraded.insert('characters', {'id': 'pg1', 'name': 'Aria'});
+        await armorMigrations.apply(upgraded, 1, 2);
+
+        final fresh = await openFresh(
+          version: 2,
+          onCreate: (db, version) => armorMigrations.apply(db, 0, version),
+        );
+        addTearDown(fresh.close);
+
+        expect(await schemaOf(upgraded), await schemaOf(fresh));
+      },
+    );
+  });
 }

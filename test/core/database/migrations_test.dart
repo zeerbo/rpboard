@@ -67,13 +67,13 @@ void main() {
   });
 
   group('production ladder', () {
-    test('ships exactly one step, version 1', () {
-      expect(productionLadder.length, 1);
-      expect(productionLadder.single.version, 1);
+    test('ships exactly two steps, versions 1 and 2', () {
+      expect(productionLadder.length, 2);
+      expect(productionLadder.map((s) => s.version), [1, 2]);
     });
 
-    test('holds the five baseline CREATE TABLE statements', () {
-      final statements = productionLadder.single.statements;
+    test('v1 holds the five baseline CREATE TABLE statements', () {
+      final statements = productionLadder.first.statements;
 
       expect(statements.length, 5);
       expect(statements[0], contains('CREATE TABLE characters'));
@@ -83,10 +83,18 @@ void main() {
       expect(statements[4], contains('CREATE TABLE components'));
     });
 
+    test('v2 holds the armor and equipment ALTER TABLE statements', () {
+      final statements = productionLadder.last.statements;
+
+      expect(statements.length, 2);
+      expect(statements[0], 'ALTER TABLE characters ADD COLUMN armor TEXT DEFAULT NULL');
+      expect(statements[1], "ALTER TABLE characters ADD COLUMN equipment TEXT DEFAULT '[]'");
+    });
+
     test('default Migrations() uses the production ladder', () {
       const migrations = Migrations();
 
-      expect(migrations.stepsFrom(0, 1), productionLadder);
+      expect(migrations.stepsFrom(0, 2), productionLadder);
     });
   });
 }

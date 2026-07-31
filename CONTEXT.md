@@ -29,6 +29,18 @@ _Avoid_: Data blob, payload map
 A single player character sheet — PG Mode's root entity, owned by no Campaign. It is where the 5e-style rules derived from a sheet live (ability modifiers, proficiency bonus, skill and saving-throw bonuses, spell save DC and attack bonus, spell slots, death saves): a rule that can be computed from a Character belongs to the Character, not to the screen showing it.
 _Avoid_: PG (that's the mode), sheet, hero, player (the person, not the character)
 
+**Armor**:
+The single, optional piece of armor a Character wears. Carries a `name`, a `baseAc`, and an `addsDex` flag that decides how the derived AC is computed: `baseAc + dexMod` when true, the fixed `baseAc` when false. Deliberately game-agnostic — there is no 5e light/medium/heavy armor *type*, only the boolean flag — so cross-game AC rules stay expressible. When a Character has no Armor, its final AC falls back to the manually typed `armorClass`. The rule lives on Character (`armorClassEffective`), not the screen.
+_Avoid_: Armor type/category, light/medium/heavy
+
+**EquipmentItem**:
+A worn/held item a Character equips *distinct from the inventory* (rings, cloaks, amulets…): a `name` plus a list of EquipmentBonuses. Its effects are derived, never written back into the Character's nude fields. This is the combat-section "worn equipment", separate from the weight-tracking inventory on the Equipaggiamento tab.
+_Avoid_: Inventory item (that's the separate weight/quantity list), gear
+
+**EquipmentBonus**:
+One configurable effect on an EquipmentItem: a `type` (`ac`, `attack`, `damage`, `initiative`, `speed`, `savingThrow`, `ability`) plus the data that type needs — an integer value, a `target` ability (`str`…`cha` or `all`) for `savingThrow`/`ability`, or a fixed/dice form for `damage`. Bonuses are **global** across the whole sheet (every attack, every save), never per-attack. They are summed over derived getters on Character (`armorClassEffective`, `effective*` ability scores, `savingThrowBonus`, `initiativeEffective`, `speedEffective`, the attack/damage helpers) so the persisted nude fields the player types stay untouched; the UI shows the effective total plus the equipment share as a badge.
+_Avoid_: Modifier, buff, effect, per-attack bonus
+
 **Ordered**:
 The contract shared by the entities whose position within their parent the DM controls by dragging — Chapter, SessionScreen, SessionComponent. Each carries an id and a position, and the positions of a parent's children are always a dense sequence starting at zero. Campaign is not Ordered: campaigns are listed by when they were last updated. See [ADR-0003](docs/adr/0003-atomic-reorder.md).
 _Avoid_: Sort key, index, rank, position field

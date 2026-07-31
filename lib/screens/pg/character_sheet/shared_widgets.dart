@@ -75,6 +75,33 @@ class SheetTextField extends StatelessWidget {
       );
 }
 
+/// Compact badge next to a field affected by equipment, e.g. "10 → 12 (+2
+/// equip.)". Renders nothing when [base] == [effective] (no equipment
+/// share), so callers can include it unconditionally.
+class EquipmentBadge extends StatelessWidget {
+  final int base;
+  final int effective;
+  const EquipmentBadge({super.key, required this.base, required this.effective});
+
+  @override
+  Widget build(BuildContext context) {
+    final equip = effective - base;
+    if (equip == 0) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceVariant,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppTheme.accent.withOpacity(0.3)),
+      ),
+      child: Text(
+        '$base → $effective (${equip >= 0 ? "+" : ""}$equip equip.)',
+        style: const TextStyle(color: AppTheme.accent, fontSize: 11, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
+
 String fmtMod(int mod) => mod >= 0 ? '+$mod' : '$mod';
 
 String abilityShort(String a) {

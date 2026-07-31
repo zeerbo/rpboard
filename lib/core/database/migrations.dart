@@ -18,12 +18,13 @@ class MigrationStep {
   final List<String> statements;
 }
 
-/// The production schema ladder. Ships exactly one step today — the baseline
-/// v1 DDL, moved verbatim out of `SqfliteDatabase`'s former `_onCreate` — so
-/// the schema version stays at 1 and this change is invisible to every
-/// existing install. The next schema change adds a step here; `onCreate` and
-/// `onUpgrade` pick it up automatically since both are thin callers of
-/// [Migrations.stepsFrom].
+/// The production schema ladder. Started with exactly one step — the
+/// baseline v1 DDL, moved verbatim out of `SqfliteDatabase`'s former
+/// `_onCreate` — so the schema version stayed at 1 and that change was
+/// invisible to every existing install. Version 2 adds the `armor` and
+/// `equipment` columns to `characters`. Each schema change appends a step
+/// here; `onCreate` and `onUpgrade` pick it up automatically since both are
+/// thin callers of [Migrations.stepsFrom].
 const List<MigrationStep> productionLadder = <MigrationStep>[
   MigrationStep(
     version: 1,
@@ -128,6 +129,13 @@ const List<MigrationStep> productionLadder = <MigrationStep>[
         FOREIGN KEY (screen_id) REFERENCES session_screens(id) ON DELETE CASCADE
       )
     ''',
+    ],
+  ),
+  MigrationStep(
+    version: 2,
+    statements: <String>[
+      'ALTER TABLE characters ADD COLUMN armor TEXT DEFAULT NULL',
+      "ALTER TABLE characters ADD COLUMN equipment TEXT DEFAULT '[]'",
     ],
   ),
 ];
