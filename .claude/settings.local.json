@@ -5,7 +5,12 @@
       "Bash(flutter analyze *)",
       "Bash(xargs wc -l)",
       "Bash(flutter --version)",
-      "Read(//c/Users/lucaz/.claude/plugins/cache/mattpocock/mattpocock-skills/1.2.0/skills/productivity/grill-me/**)"
+      "Read(//c/Users/lucaz/.claude/plugins/cache/mattpocock/mattpocock-skills/1.2.0/skills/productivity/grill-me/**)",
+      "Bash(git check-ignore *)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git add *)",
+      "Bash(git commit -m 'feat\\(character\\): structured feature list & languages on Bio tab *)",
+      "Bash(git push *)"
     ]
   }
 }
