@@ -201,6 +201,26 @@ class EquipmentItem {
       };
 }
 
+/// A single character feature or trait: a named entry with a free-text
+/// description. Replaces the former single `featuresAndTraits` text blob so
+/// each feature is an individually addable, removable item.
+class CharacterFeature {
+  String title;
+  String description;
+
+  CharacterFeature({this.title = '', this.description = ''});
+
+  factory CharacterFeature.fromJson(Map<String, dynamic> j) => CharacterFeature(
+        title: j['title'] ?? '',
+        description: j['description'] ?? '',
+      );
+
+  Map<String, dynamic> toJson() => {
+        'title': title,
+        'description': description,
+      };
+}
+
 class InventoryItem {
   String name;
   int quantity;
@@ -341,8 +361,8 @@ class Character {
   String ideals;
   String bonds;
   String flaws;
-  String featuresAndTraits;
-  String profsAndLanguages;
+  List<CharacterFeature> features;
+  List<String> languages;
 
   // Backstory
   String backstory;
@@ -412,8 +432,8 @@ class Character {
     this.ideals = '',
     this.bonds = '',
     this.flaws = '',
-    this.featuresAndTraits = '',
-    this.profsAndLanguages = '',
+    List<CharacterFeature>? features,
+    List<String>? languages,
     this.backstory = '',
     this.appearance = '',
     this.age = 0,
@@ -433,6 +453,8 @@ class Character {
         skillProfs = skillProfs ?? [],
         skillExpertise = skillExpertise ?? [],
         inventory = inventory ?? [],
+        features = features ?? [],
+        languages = languages ?? [],
         attacks = attacks ?? [],
         equipment = equipment ?? [],
         spellSlots = spellSlots ?? [],
@@ -844,6 +866,46 @@ class Character {
       }
     }
 
+    // Non-empty, trimmed lines of a legacy free-text blob.
+    List<String> legacyLines(String raw) => raw
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
+
+    // Languages: a JSON list in the new format; a legacy newline-separated
+    // blob (formerly "Competenze e Lingue") converts to one language per line.
+    List<String> parseLanguages() {
+      final raw = (m['profs_and_languages'] ?? '') as String;
+      if (raw.trim().startsWith('[')) {
+        try {
+          return List<String>.from(jsonDecode(raw) as List);
+        } catch (_) {
+          return [];
+        }
+      }
+      return legacyLines(raw);
+    }
+
+    // Features: a JSON list in the new format; a legacy newline-separated blob
+    // converts to one entry per line with the line as the description and an
+    // empty title (the user retitles by hand).
+    List<CharacterFeature> parseFeatures() {
+      final raw = (m['features_and_traits'] ?? '') as String;
+      if (raw.trim().startsWith('[')) {
+        try {
+          return (jsonDecode(raw) as List)
+              .map((f) => CharacterFeature.fromJson(f as Map<String, dynamic>))
+              .toList();
+        } catch (_) {
+          return [];
+        }
+      }
+      return legacyLines(raw)
+          .map((l) => CharacterFeature(description: l))
+          .toList();
+    }
+
     Armor? parseArmor() {
       final raw = m['armor'];
       if (raw == null || (raw is String && raw.isEmpty)) return null;
@@ -907,8 +969,8 @@ class Character {
       ideals: m['ideals'] ?? '',
       bonds: m['bonds'] ?? '',
       flaws: m['flaws'] ?? '',
-      featuresAndTraits: m['features_and_traits'] ?? '',
-      profsAndLanguages: m['profs_and_languages'] ?? '',
+      features: parseFeatures(),
+      languages: parseLanguages(),
       backstory: m['backstory'] ?? '',
       appearance: m['appearance'] ?? '',
       age: m['age'] ?? 0,
@@ -970,8 +1032,13 @@ class Character {
         'ideals': ideals,
         'bonds': bonds,
         'flaws': flaws,
-        'features_and_traits': featuresAndTraits,
-        'profs_and_languages': profsAndLanguages,
+        'features_and_traits': jsonEncode(features
+            .where((f) =>
+                f.title.trim().isNotEmpty || f.description.trim().isNotEmpty)
+            .map((f) => f.toJson())
+            .toList()),
+        'profs_and_languages': jsonEncode(
+            languages.where((l) => l.trim().isNotEmpty).toList()),
         'backstory': backstory,
         'appearance': appearance,
         'age': age,

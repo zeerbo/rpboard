@@ -976,4 +976,82 @@ void main() {
       expect(c.spellDamageLabel(), '+1');
     });
   });
+
+  group('Bio languages + features as list entries', () {
+    test('legacy plain-text profs_and_languages splits into one language per line', () {
+      final map = _char().toMap()
+        ..['profs_and_languages'] = 'Comune\nElfico\n\n  Nanico  ';
+
+      final restored = Character.fromMap(map);
+
+      // Blank lines dropped, each line trimmed.
+      expect(restored.languages, ['Comune', 'Elfico', 'Nanico']);
+    });
+
+    test('legacy plain-text features_and_traits splits into entries with empty titles', () {
+      final map = _char().toMap()
+        ..['features_and_traits'] = 'Scurovisione\n\nFuria da Berserker';
+
+      final restored = Character.fromMap(map);
+
+      expect(restored.features, hasLength(2));
+      expect(restored.features[0].title, '');
+      expect(restored.features[0].description, 'Scurovisione');
+      expect(restored.features[1].title, '');
+      expect(restored.features[1].description, 'Furia da Berserker');
+    });
+
+    test('empty legacy blobs yield empty lists', () {
+      final map = _char().toMap()
+        ..['profs_and_languages'] = ''
+        ..['features_and_traits'] = '';
+
+      final restored = Character.fromMap(map);
+
+      expect(restored.languages, isEmpty);
+      expect(restored.features, isEmpty);
+    });
+
+    test('new JSON-list values round-trip via toMap/fromMap', () {
+      final c = _char()
+        ..languages.addAll(['Comune', 'Draconico'])
+        ..features.addAll([
+          CharacterFeature(title: 'Vista Nel Buio', description: '18 metri'),
+          CharacterFeature(title: 'Fortunato', description: 'Ritira gli 1'),
+        ]);
+
+      final restored = Character.fromMap(c.toMap());
+
+      expect(restored.languages, ['Comune', 'Draconico']);
+      expect(restored.features, hasLength(2));
+      expect(restored.features[0].title, 'Vista Nel Buio');
+      expect(restored.features[0].description, '18 metri');
+      expect(restored.features[1].title, 'Fortunato');
+      expect(restored.features[1].description, 'Ritira gli 1');
+    });
+
+    test('toMap prunes fully-empty entries but keeps partially-filled ones', () {
+      final c = _char()
+        ..languages.addAll(['Comune', '', '   '])
+        ..features.addAll([
+          CharacterFeature(title: '', description: ''), // dropped
+          CharacterFeature(title: '  ', description: ' '), // dropped
+          CharacterFeature(title: 'Solo Titolo', description: ''), // kept
+          CharacterFeature(title: '', description: 'Solo Descrizione'), // kept
+        ]);
+
+      final restored = Character.fromMap(c.toMap());
+
+      expect(restored.languages, ['Comune']);
+      expect(restored.features, hasLength(2));
+      expect(restored.features[0].title, 'Solo Titolo');
+      expect(restored.features[1].description, 'Solo Descrizione');
+    });
+
+    test('a fresh character has empty language and feature lists', () {
+      final restored = Character.fromMap(_char().toMap());
+      expect(restored.languages, isEmpty);
+      expect(restored.features, isEmpty);
+    });
+  });
 }
