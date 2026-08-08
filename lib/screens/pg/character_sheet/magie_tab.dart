@@ -64,6 +64,13 @@ class _MagieTabState extends State<MagieTab> {
             const SizedBox(width: 12),
             InfoChip('Bonus Attacco', '+${c.spellAttackBonus}'),
           ]),
+          if (c.spellDamageLabel() != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Danno Incantesimi: ${c.spellDamageLabel()}',
+              style: const TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 16),
           const SectionHeader(title: 'Slot Magia'),
           const SizedBox(height: 8),
@@ -128,6 +135,7 @@ class _MagieTabState extends State<MagieTab> {
               subtitle: Row(children: [
                 if (e.value.school.isNotEmpty) Text('${e.value.school}  ', style: const TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 11)),
                 if (e.value.castingTime.isNotEmpty) Text(e.value.castingTime, style: const TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 11)),
+                if (e.value.damage.isNotEmpty) Text('  •  ${e.value.damage}', style: const TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 11)),
               ]),
               trailing: IconButton(
                 icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.danger),
@@ -159,6 +167,7 @@ class _MagieTabState extends State<MagieTab> {
     final cmp = TextEditingController(text: initial.components);
     final dur = TextEditingController(text: initial.duration);
     final desc = TextEditingController(text: initial.description);
+    final dmg = TextEditingController(text: initial.damage);
     return showDialog<Spell>(
       context: context,
       builder: (_) => AlertDialog(
@@ -188,13 +197,15 @@ class _MagieTabState extends State<MagieTab> {
               ]),
               const SizedBox(height: 8),
               TextField(controller: desc, decoration: const InputDecoration(labelText: 'Descrizione'), maxLines: 3),
+              const SizedBox(height: 8),
+              TextField(controller: dmg, decoration: const InputDecoration(labelText: 'Danno (es. 8d6 fuoco)')),
             ],
           ),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Annulla')),
           ElevatedButton(
-            onPressed: () => Navigator.pop(context, Spell(name: nam.text, level: int.tryParse(lvl.text) ?? 0, school: sch.text, castingTime: ct.text, range: rng.text, components: cmp.text, duration: dur.text, description: desc.text)),
+            onPressed: () => Navigator.pop(context, Spell(name: nam.text, level: int.tryParse(lvl.text) ?? 0, school: sch.text, castingTime: ct.text, range: rng.text, components: cmp.text, duration: dur.text, description: desc.text, damage: dmg.text)),
             child: const Text('Salva'),
           ),
         ],

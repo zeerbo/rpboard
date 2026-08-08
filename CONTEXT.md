@@ -34,11 +34,11 @@ The single, optional piece of armor a Character wears. Carries a `name`, a `base
 _Avoid_: Armor type/category, light/medium/heavy
 
 **EquipmentItem**:
-A worn/held item a Character equips *distinct from the inventory* (rings, cloaks, amulets…): a `name` plus a list of EquipmentBonuses. Its effects are derived, never written back into the Character's nude fields. This is the combat-section "worn equipment", separate from the weight-tracking inventory on the Equipaggiamento tab.
+A worn/held item a Character equips *distinct from the inventory* (rings, cloaks, amulets…): a `name`, a free-text `notes` field, plus a list of EquipmentBonuses. Its effects are derived, never written back into the Character's nude fields. This is the combat-section "worn equipment", separate from the weight-tracking inventory on the Equipaggiamento tab.
 _Avoid_: Inventory item (that's the separate weight/quantity list), gear
 
 **EquipmentBonus**:
-One configurable effect on an EquipmentItem: a `type` (`ac`, `attack`, `damage`, `initiative`, `speed`, `savingThrow`, `ability`) plus the data that type needs — an integer value, a `target` ability (`str`…`cha` or `all`) for `savingThrow`/`ability`, or a fixed/dice form for `damage`. Bonuses are **global** across the whole sheet (every attack, every save), never per-attack. They are summed over derived getters on Character (`armorClassEffective`, `effective*` ability scores, `savingThrowBonus`, `initiativeEffective`, `speedEffective`, the attack/damage helpers) so the persisted nude fields the player types stay untouched; the UI shows the effective total plus the equipment share as a badge.
+One configurable effect on an EquipmentItem: a `type` (`ac`, `attack`, `damage`, `initiative`, `speed`, `savingThrow`, `ability`, `spellSaveDC`, `spellAttack`, `spellDamage`) plus the data that type needs — an integer value, a `target` ability (`str`…`cha` or `all`) for `savingThrow`/`ability`, or a fixed/dice form for `damage`. Bonuses are **global** across the whole sheet (every attack, every save), never per-attack. They are summed over derived getters on Character (`armorClassEffective`, `effective*` ability scores, `savingThrowBonus`, `initiativeEffective`, `speedEffective`, the attack/damage helpers) so the persisted nude fields the player types stay untouched; the UI shows the effective total plus the equipment share as a badge.
 _Avoid_: Modifier, buff, effect, per-attack bonus
 
 **Ordered**:

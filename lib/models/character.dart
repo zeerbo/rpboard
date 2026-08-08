@@ -58,6 +58,7 @@ class Spell {
   String components;
   String duration;
   String description;
+  String damage;
 
   Spell({
     this.name = '',
@@ -69,6 +70,7 @@ class Spell {
     this.components = '',
     this.duration = '',
     this.description = '',
+    this.damage = '',
   });
 
   factory Spell.fromJson(Map<String, dynamic> j) => Spell(
@@ -81,6 +83,7 @@ class Spell {
         components: j['components'] ?? '',
         duration: j['duration'] ?? '',
         description: j['description'] ?? '',
+        damage: j['damage'] ?? '',
       );
 
   Map<String, dynamic> toJson() => {
@@ -93,6 +96,7 @@ class Spell {
         'components': components,
         'duration': duration,
         'description': description,
+        'damage': damage,
       };
 }
 
@@ -116,7 +120,7 @@ class Armor {
       };
 }
 
-enum EquipmentBonusType { ac, attack, damage, initiative, speed, savingThrow, ability }
+enum EquipmentBonusType { ac, attack, damage, initiative, speed, savingThrow, ability, spellSaveDC, spellAttack, spellDamage }
 
 enum EquipmentDamageForm { fixed, dice }
 
@@ -177,12 +181,14 @@ EquipmentBonusType _bonusTypeFromName(Object? name) {
 
 class EquipmentItem {
   String name;
+  String notes;
   List<EquipmentBonus> bonuses;
-  EquipmentItem({this.name = '', List<EquipmentBonus>? bonuses})
+  EquipmentItem({this.name = '', this.notes = '', List<EquipmentBonus>? bonuses})
       : bonuses = bonuses ?? [];
 
   factory EquipmentItem.fromJson(Map<String, dynamic> j) => EquipmentItem(
         name: j['name'] ?? '',
+        notes: j['notes'] ?? '',
         bonuses: ((j['bonuses'] as List?) ?? [])
             .map((b) => EquipmentBonus.fromJson(b as Map<String, dynamic>))
             .toList(),
@@ -190,6 +196,7 @@ class EquipmentItem {
 
   Map<String, dynamic> toJson() => {
         'name': name,
+        'notes': notes,
         'bonuses': bonuses.map((b) => b.toJson()).toList(),
       };
 }
@@ -601,6 +608,38 @@ class Character {
     return parts.join(' ');
   }
 
+  /// Aggregates all equipment `spellDamage` bonuses into a fixed part (summed)
+  /// plus the list of dice terms. Empty/zero when there are none. Mirrors
+  /// [equipmentDamageBonus] but for the spell-damage bonus type.
+  ({int fixed, List<({int count, int die})> dice}) spellDamageBonus() {
+    var fixed = 0;
+    final dice = <({int count, int die})>[];
+    for (final item in equipment) {
+      for (final b in item.bonuses) {
+        if (b.type != EquipmentBonusType.spellDamage) continue;
+        if (b.damageForm == EquipmentDamageForm.fixed) {
+          fixed += b.value;
+        } else if (b.diceCount > 0 && b.die > 0) {
+          dice.add((count: b.diceCount, die: b.die));
+        }
+      }
+    }
+    return (fixed: fixed, dice: dice);
+  }
+
+  /// Display string for [spellDamageBonus], e.g. "+1", "+3d8", or "+1 +3d8".
+  /// Null when there's nothing to show, so the UI can conditionally render.
+  String? spellDamageLabel() {
+    final agg = spellDamageBonus();
+    if (agg.fixed == 0 && agg.dice.isEmpty) return null;
+    final parts = <String>[];
+    if (agg.fixed != 0) parts.add('${agg.fixed >= 0 ? "+" : ""}${agg.fixed}');
+    for (final d in agg.dice) {
+      parts.add('+${d.count}d${d.die}');
+    }
+    return parts.join(' ');
+  }
+
   int skillBonus(String skill) {
     final ability = kSkillAbility[skill] ?? 'dex';
     final base = abilityMod(ability);
@@ -657,9 +696,11 @@ class Character {
     return key == null ? 0 : abilityMod(key);
   }
 
-  int get spellSaveDC => 8 + proficiencyBonus + spellcastingAbilityMod;
+  int get spellSaveDC =>
+      8 + proficiencyBonus + spellcastingAbilityMod + sumEquipmentBonus(EquipmentBonusType.spellSaveDC);
 
-  int get spellAttackBonus => proficiencyBonus + spellcastingAbilityMod;
+  int get spellAttackBonus =>
+      proficiencyBonus + spellcastingAbilityMod + sumEquipmentBonus(EquipmentBonusType.spellAttack);
 
   // ── Spell slots ───────────────────────────────────────────────────────────
   //

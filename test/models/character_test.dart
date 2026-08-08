@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rpboard/models/character.dart';
 
@@ -818,6 +820,160 @@ void main() {
       expect(c.skillBonus('Percezione'), c.wisMod + c.proficiencyBonus);
       expect(c.spellSaveDC, 8 + c.proficiencyBonus + c.wisMod);
       expect(c.spellAttackBonus, c.proficiencyBonus + c.wisMod);
+    });
+  });
+
+  group('Spell damage field (ticket 05)', () {
+    test('round-trip: toMap -> fromMap preserves Spell.damage', () {
+      final c = _char()
+        ..spells.add(Spell(name: 'Palla di Fuoco', level: 3, school: 'Evocazione', damage: '8d6 fuoco'));
+      final restored = Character.fromMap(c.toMap());
+      expect(restored.spells.single.damage, '8d6 fuoco');
+    });
+
+    test('legacy spell JSON without a damage key loads to default "" with no exception', () {
+      final c = _char()..spells.add(Spell(name: 'Dardo Incantato', level: 1));
+      final map = c.toMap();
+      // Simulate an older payload: strip the damage key from each serialized spell.
+      final spellsJson = (jsonDecode(map['spells'] as String) as List)
+          .map((s) => (s as Map<String, dynamic>)..remove('damage'))
+          .toList();
+      map['spells'] = jsonEncode(spellsJson);
+      expect(() => Character.fromMap(map), returnsNormally);
+      final restored = Character.fromMap(map);
+      expect(restored.spells.single.damage, '');
+    });
+  });
+
+  group('EquipmentItem notes field (ticket 02)', () {
+    test('round-trip: toMap -> fromMap preserves EquipmentItem.notes', () {
+      final c = _char()
+        ..equipment.add(EquipmentItem(name: 'Anello', notes: 'sintonizzato'));
+      final restored = Character.fromMap(c.toMap());
+      expect(restored.equipment.single.notes, 'sintonizzato');
+    });
+
+    test('legacy item JSON without a notes key loads to default "" with no exception', () {
+      final c = _char()..equipment.add(EquipmentItem(name: 'Mantello'));
+      final map = c.toMap();
+      final eqJson = (jsonDecode(map['equipment'] as String) as List)
+          .map((e) => (e as Map<String, dynamic>)..remove('notes'))
+          .toList();
+      map['equipment'] = jsonEncode(eqJson);
+      expect(() => Character.fromMap(map), returnsNormally);
+      final restored = Character.fromMap(map);
+      expect(restored.equipment.single.notes, '');
+    });
+  });
+
+  group('Character spell DC/attack equipment bonuses (ticket 03)', () {
+    test('spellSaveDC includes a spellSaveDC equipment bonus over the base', () {
+      final base = _char(spellcastingAbility: 'Intelligenza').spellSaveDC;
+      final c = _char(spellcastingAbility: 'Intelligenza')
+        ..equipment.add(EquipmentItem(name: 'Bacchetta', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.spellSaveDC, value: 2),
+        ]));
+      expect(c.spellSaveDC, base + 2);
+    });
+
+    test('spellAttackBonus includes a spellAttack equipment bonus over the base', () {
+      final base = _char(spellcastingAbility: 'Intelligenza').spellAttackBonus;
+      final c = _char(spellcastingAbility: 'Intelligenza')
+        ..equipment.add(EquipmentItem(name: 'Focus', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.spellAttack, value: 3),
+        ]));
+      expect(c.spellAttackBonus, base + 3);
+    });
+
+    test('round-trip: spellSaveDC and spellAttack bonuses survive toMap/fromMap', () {
+      final c = _char(spellcastingAbility: 'Intelligenza')
+        ..equipment.add(EquipmentItem(name: 'Bastone', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.spellSaveDC, value: 1),
+          EquipmentBonus(type: EquipmentBonusType.spellAttack, value: 2),
+        ]));
+      final restored = Character.fromMap(c.toMap());
+      expect(restored.spellSaveDC, c.spellSaveDC);
+      expect(restored.spellAttackBonus, c.spellAttackBonus);
+      expect(restored.equipment.single.bonuses[0].type, EquipmentBonusType.spellSaveDC);
+      expect(restored.equipment.single.bonuses[1].type, EquipmentBonusType.spellAttack);
+    });
+
+    test('legacy bonus with an unknown type name falls back to ac, no exception', () {
+      final c = _char()
+        ..equipment.add(EquipmentItem(name: 'X', bonuses: [EquipmentBonus(type: EquipmentBonusType.ac, value: 2)]));
+      final map = c.toMap();
+      final eqJson = (jsonDecode(map['equipment'] as String) as List).map((e) {
+        final item = e as Map<String, dynamic>;
+        for (final b in (item['bonuses'] as List)) {
+          (b as Map<String, dynamic>)['type'] = 'totallyUnknownType';
+        }
+        return item;
+      }).toList();
+      map['equipment'] = jsonEncode(eqJson);
+      expect(() => Character.fromMap(map), returnsNormally);
+      final restored = Character.fromMap(map);
+      expect(restored.equipment.single.bonuses.single.type, EquipmentBonusType.ac);
+    });
+  });
+
+  group('Character spellDamage equipment bonus (ticket 04)', () {
+    test('spellDamageLabel: null when there are no spellDamage bonuses', () {
+      final c = _char()
+        ..equipment.add(EquipmentItem(name: 'Anello', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.spellSaveDC, value: 2),
+        ]));
+      expect(c.spellDamageLabel(), isNull);
+    });
+
+    test('spellDamageLabel: fixed-only formats as a signed integer', () {
+      final c = _char()
+        ..equipment.add(EquipmentItem(name: 'Guanto', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.spellDamage, value: 2, damageForm: EquipmentDamageForm.fixed),
+        ]));
+      expect(c.spellDamageLabel(), '+2');
+    });
+
+    test('spellDamageLabel: dice-only formats as +NdM', () {
+      final c = _char()
+        ..equipment.add(EquipmentItem(name: 'Bastone', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.spellDamage, damageForm: EquipmentDamageForm.dice, diceCount: 1, die: 6),
+        ]));
+      expect(c.spellDamageLabel(), '+1d6');
+    });
+
+    test('spellDamageLabel: aggregates fixed and dice across multiple items, fixed first', () {
+      final c = _char()
+        ..equipment.addAll([
+          EquipmentItem(name: 'A', bonuses: [
+            EquipmentBonus(type: EquipmentBonusType.spellDamage, value: 1, damageForm: EquipmentDamageForm.fixed),
+            EquipmentBonus(type: EquipmentBonusType.spellDamage, value: 2, damageForm: EquipmentDamageForm.fixed),
+          ]),
+          EquipmentItem(name: 'B', bonuses: [
+            EquipmentBonus(type: EquipmentBonusType.spellDamage, damageForm: EquipmentDamageForm.dice, diceCount: 3, die: 8),
+          ]),
+        ]);
+      expect(c.spellDamageLabel(), '+3 +3d8');
+    });
+
+    test('round-trip: spellDamage bonus survives toMap/fromMap', () {
+      final c = _char()
+        ..equipment.add(EquipmentItem(name: 'Bacchetta', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.spellDamage, damageForm: EquipmentDamageForm.dice, diceCount: 2, die: 6),
+        ]));
+      final restored = Character.fromMap(c.toMap());
+      expect(restored.spellDamageLabel(), c.spellDamageLabel());
+      expect(restored.spellDamageLabel(), '+2d6');
+      expect(restored.equipment.single.bonuses.single.type, EquipmentBonusType.spellDamage);
+    });
+
+    test('spellDamage is separate from the weapon damage aggregation', () {
+      final c = _char()
+        ..equipment.add(EquipmentItem(name: 'Mix', bonuses: [
+          EquipmentBonus(type: EquipmentBonusType.damage, value: 5, damageForm: EquipmentDamageForm.fixed),
+          EquipmentBonus(type: EquipmentBonusType.spellDamage, value: 1, damageForm: EquipmentDamageForm.fixed),
+        ]));
+      expect(c.equipmentDamageLabel(), '+5');
+      expect(c.spellDamageLabel(), '+1');
     });
   });
 }

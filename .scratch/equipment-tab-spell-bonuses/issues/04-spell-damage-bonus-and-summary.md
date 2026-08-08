@@ -6,11 +6,11 @@
 
 **Status:** ready-for-agent
 
-- [ ] `EquipmentBonusType` guadagna il valore `spellDamage`, che riusa i campi già presenti su `EquipmentBonus` (`damageForm`, `diceCount`, `die`, `value`) — nessun nuovo campo, identico al tipo `damage`.
-- [ ] Nuovo getter `spellDamageBonus()` (fisso sommato + lista termini a dadi) e `spellDamageLabel()` (stringa "+X" / "+NdM" / null), a specchio di `equipmentDamageBonus()` / `equipmentDamageLabel()` ma filtrando il tipo `spellDamage`.
-- [ ] Il dialog del bonus ha la voce Danno Incantesimi con lo stesso toggle Fisso/Dadi del tipo Danno (arma).
-- [ ] Riepilogo card oggetto: etichetta breve `Danno Inc +N` / `Danno Inc +NdM`.
-- [ ] Nella tab Magie, sotto i chip, compare la riga `Danno Incantesimi: <label>` solo quando `spellDamageLabel()` non è nullo.
-- [ ] Il Danno Incantesimi da equipaggiamento resta separato dal campo Danno del singolo incantesimo: nessuna somma numerica tra i due.
-- [ ] Glossario CONTEXT.md: la voce "EquipmentBonus" include il tipo `spellDamage`.
-- [ ] Test modello: `spellDamageLabel()` aggrega correttamente termine fisso e termini a dadi da più oggetti ed è nullo quando non ci sono bonus `spellDamage`; round-trip JSON del tipo `spellDamage` conserva i valori.
+- [x] `EquipmentBonusType` guadagna il valore `spellDamage`, che riusa i campi già presenti su `EquipmentBonus` (`damageForm`, `diceCount`, `die`, `value`) — nessun nuovo campo, identico al tipo `damage`.
+- [x] Nuovo getter `spellDamageBonus()` (fisso sommato + lista termini a dadi) e `spellDamageLabel()` (stringa "+X" / "+NdM" / null), a specchio di `equipmentDamageBonus()` / `equipmentDamageLabel()` ma filtrando il tipo `spellDamage`.
+- [x] Il dialog del bonus ha la voce Danno Incantesimi con lo stesso toggle Fisso/Dadi del tipo Danno (arma).
+- [x] Riepilogo card oggetto: etichetta breve `Danno Inc +N` / `Danno Inc +NdM`.
+- [x] Nella tab Magie, sotto i chip, compare la riga `Danno Incantesimi: <label>` solo quando `spellDamageLabel()` non è nullo.
+- [x] Il Danno Incantesimi da equipaggiamento resta separato dal campo Danno del singolo incantesimo: nessuna somma numerica tra i due.
+- [x] Glossario CONTEXT.md: la voce "EquipmentBonus" include il tipo `spellDamage`.
+- [x] Test modello: `spellDamageLabel()` aggrega correttamente termine fisso e termini a dadi da più oggetti ed è nullo quando non ci sono bonus `spellDamage`; round-trip JSON del tipo `spellDamage` conserva i valori.

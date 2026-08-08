@@ -277,4 +277,22 @@ void main() {
       await unmountSheet(tester);
     });
   });
+
+  group('Equipped items relocation (ticket 01)', () {
+    testWidgets('equipped-items section lives on Equipaggiamento, not Combattimento', (tester) async {
+      await db.insertCharacter(Character(id: 'c1', name: 'Aragorn'));
+      await pumpSheet(tester, 'c1');
+
+      await tapTab(tester, 'Equipaggiamento');
+      expect(find.text('Nessun oggetto equipaggiato'), findsOneWidget);
+
+      await tapTab(tester, 'Combattimento');
+      expect(find.text('Nessun oggetto equipaggiato'), findsNothing);
+      // Armatura stays in Combattimento.
+      expect(find.text('CA Finale'), findsWidgets);
+      expect(find.text('Aggiungi Armatura'), findsOneWidget);
+
+      await unmountSheet(tester);
+    });
+  });
 }

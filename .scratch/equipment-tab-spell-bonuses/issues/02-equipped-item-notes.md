@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] `EquipmentItem` guadagna un campo `notes` (stringa, default ""), incluso nel round-trip JSON; nessuna migrazione DB (blob JSON esistente).
-- [ ] Il dialog dell'oggetto equipaggiato ha un campo Note a testo libero.
-- [ ] Le note compaiono su una riga a sé nel sottotitolo della card quando valorizzate; assenti quando vuote.
-- [ ] Glossario CONTEXT.md: la voce "EquipmentItem" include il campo `notes`.
-- [ ] Test modello: round-trip JSON conserva `notes`; un oggetto serializzato senza il campo carica a default "" senza eccezioni.
+- [x] `EquipmentItem` guadagna un campo `notes` (stringa, default ""), incluso nel round-trip JSON; nessuna migrazione DB (blob JSON esistente).
+- [x] Il dialog dell'oggetto equipaggiato ha un campo Note a testo libero.
+- [x] Le note compaiono su una riga a sé nel sottotitolo della card quando valorizzate; assenti quando vuote.
+- [x] Glossario CONTEXT.md: la voce "EquipmentItem" include il campo `notes`.
+- [x] Test modello: round-trip JSON conserva `notes`; un oggetto serializzato senza il campo carica a default "" senza eccezioni.

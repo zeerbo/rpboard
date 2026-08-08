@@ -6,9 +6,9 @@
 
 **Status:** ready-for-agent
 
-- [ ] La sezione Oggetti Equipaggiati (header, lista card, pulsante "Aggiungi Oggetto") compare nella tab Equipaggiamento tra Monete e Inventario.
-- [ ] Tutto l'apparato di dialog/helper dell'oggetto (dialog oggetto, dialog bonus, descrizione bonus, label target) accompagna la sezione nella nuova posizione.
-- [ ] La sezione Oggetti Equipaggiati non compare più nella tab Combattimento.
-- [ ] La sezione Armatura resta in Combattimento, invariata.
-- [ ] CA, iniziativa e velocità (con i loro badge derivati dagli oggetti) continuano a mostrarsi in Combattimento; i totali sono identici a prima.
-- [ ] Test widget: la sezione Oggetti Equipaggiati è raggiungibile dalla tab Equipaggiamento e non dalla tab Combattimento; l'Armatura resta in Combattimento.
+- [x] La sezione Oggetti Equipaggiati (header, lista card, pulsante "Aggiungi Oggetto") compare nella tab Equipaggiamento tra Monete e Inventario.
+- [x] Tutto l'apparato di dialog/helper dell'oggetto (dialog oggetto, dialog bonus, descrizione bonus, label target) accompagna la sezione nella nuova posizione.
+- [x] La sezione Oggetti Equipaggiati non compare più nella tab Combattimento.
+- [x] La sezione Armatura resta in Combattimento, invariata.
+- [x] CA, iniziativa e velocità (con i loro badge derivati dagli oggetti) continuano a mostrarsi in Combattimento; i totali sono identici a prima.
+- [x] Test widget: la sezione Oggetti Equipaggiati è raggiungibile dalla tab Equipaggiamento e non dalla tab Combattimento; l'Armatura resta in Combattimento.

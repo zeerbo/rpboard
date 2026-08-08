@@ -6,12 +6,12 @@
 
 **Status:** ready-for-agent
 
-- [ ] `EquipmentBonusType` guadagna i valori `spellSaveDC` e `spellAttack`; il parse tollerante esistente (nome sconosciuto → `ac`) copre i dati vecchi senza modifiche.
-- [ ] Il getter `spellSaveDC` somma `sumEquipmentBonus(spellSaveDC)` al valore base.
-- [ ] Il getter `spellAttackBonus` somma `sumEquipmentBonus(spellAttack)` al valore base.
-- [ ] Nessun valore scritto nei campi nudi del personaggio: i bonus vivono solo nei getter derivati.
-- [ ] Il dialog del bonus ha due nuove voci nel selettore tipo: CD Incantesimi, Attacco Incantesimi.
-- [ ] Riepilogo card oggetto: etichette brevi `CD Inc +N` e `Att Inc +N`.
-- [ ] I chip "CD Magia" e "Bonus Attacco" nella tab Magie mostrano il totale comprensivo dei bonus.
-- [ ] Glossario CONTEXT.md: la voce "EquipmentBonus" include i tipi `spellSaveDC` e `spellAttack`.
-- [ ] Test modello: `spellSaveDC` riflette un bonus `spellSaveDC` sommato al base; `spellAttackBonus` riflette un bonus `spellAttack` sommato al base; round-trip JSON dei due tipi conserva i valori; dati vecchi con nome tipo sconosciuto caricano senza eccezioni.
+- [x] `EquipmentBonusType` guadagna i valori `spellSaveDC` e `spellAttack`; il parse tollerante esistente (nome sconosciuto → `ac`) copre i dati vecchi senza modifiche.
+- [x] Il getter `spellSaveDC` somma `sumEquipmentBonus(spellSaveDC)` al valore base.
+- [x] Il getter `spellAttackBonus` somma `sumEquipmentBonus(spellAttack)` al valore base.
+- [x] Nessun valore scritto nei campi nudi del personaggio: i bonus vivono solo nei getter derivati.
+- [x] Il dialog del bonus ha due nuove voci nel selettore tipo: CD Incantesimi, Attacco Incantesimi.
+- [x] Riepilogo card oggetto: etichette brevi `CD Inc +N` e `Att Inc +N`.
+- [x] I chip "CD Magia" e "Bonus Attacco" nella tab Magie mostrano il totale comprensivo dei bonus.
+- [x] Glossario CONTEXT.md: la voce "EquipmentBonus" include i tipi `spellSaveDC` e `spellAttack`.
+- [x] Test modello: `spellSaveDC` riflette un bonus `spellSaveDC` sommato al base; `spellAttackBonus` riflette un bonus `spellAttack` sommato al base; round-trip JSON dei due tipi conserva i valori; dati vecchi con nome tipo sconosciuto caricano senza eccezioni.

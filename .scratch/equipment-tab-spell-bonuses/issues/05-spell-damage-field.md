@@ -6,8 +6,8 @@
 
 **Status:** ready-for-agent
 
-- [ ] `Spell` guadagna un campo `damage` (stringa, default ""), incluso nel round-trip JSON; nessuna migrazione DB (blob JSON esistente).
-- [ ] Il dialog dell'incantesimo ha un campo Danno a testo libero, etichetta `Danno (es. 8d6 fuoco)`.
-- [ ] Il sottotitolo della card incantesimo mostra il danno quando valorizzato, accanto a scuola e tempo di lancio; assente quando vuoto.
-- [ ] Il campo Danno dell'incantesimo resta separato dal bonus `spellDamage` da equipaggiamento.
-- [ ] Test modello: round-trip JSON conserva `Spell.damage`; un incantesimo serializzato senza il campo carica a default "" senza eccezioni.
+- [x] `Spell` guadagna un campo `damage` (stringa, default ""), incluso nel round-trip JSON; nessuna migrazione DB (blob JSON esistente).
+- [x] Il dialog dell'incantesimo ha un campo Danno a testo libero, etichetta `Danno (es. 8d6 fuoco)`.
+- [x] Il sottotitolo della card incantesimo mostra il danno quando valorizzato, accanto a scuola e tempo di lancio; assente quando vuoto.
+- [x] Il campo Danno dell'incantesimo resta separato dal bonus `spellDamage` da equipaggiamento.
+- [x] Test modello: round-trip JSON conserva `Spell.damage`; un incantesimo serializzato senza il campo carica a default "" senza eccezioni.
