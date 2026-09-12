@@ -179,12 +179,31 @@ class _MagieTabState extends State<MagieTab> {
             ...byLevel[level]!.map((e) => ListTile(
               dense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-              leading: GestureDetector(
-                onTap: level > 0 ? () => _togglePrepared(c, e.key) : null,
-                child: Icon(
-                  e.value.prepared ? Icons.check_circle : Icons.circle_outlined,
-                  color: e.value.prepared ? AppTheme.accent : AppTheme.onSurfaceMuted,
-                  size: 20,
+              leading: SizedBox(
+                // A larger, invisible hit area around the 20px glyph. 40 is
+                // the most this can grow to without shifting the title: a
+                // ListTile already reserves `minLeadingWidth` (40 by
+                // default) for the leading column regardless of how small
+                // the leading widget actually is, so this claims space the
+                // row already set aside rather than taking new space from
+                // the title. `HitTestBehavior.opaque` makes the whole box
+                // tappable, not just the glyph's own painted pixels, and
+                // `Alignment.centerLeft` keeps the glyph itself exactly
+                // where it was — same size, same position, same colours.
+                width: 40,
+                height: 40,
+                child: GestureDetector(
+                  key: ValueKey('spell_prepared_${e.key}'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: level > 0 ? () => _togglePrepared(c, e.key) : null,
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Icon(
+                      e.value.prepared ? Icons.check_circle : Icons.circle_outlined,
+                      color: e.value.prepared ? AppTheme.accent : AppTheme.onSurfaceMuted,
+                      size: 20,
+                    ),
+                  ),
                 ),
               ),
               title: Text(e.value.name, style: const TextStyle(color: AppTheme.onSurface, fontSize: 13)),
