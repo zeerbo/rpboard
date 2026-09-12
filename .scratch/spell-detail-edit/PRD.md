@@ -1,6 +1,6 @@
 # Spell detail: consulting and editing a spell on the Magie tab
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 

@@ -11,42 +11,62 @@ Parent spec: `.scratch/data-transfer/PRD.md`.
 
 **Blocked by:** 02 — Tracer bullet: transfer Characters between installations.
 
-**Status:** ready-for-agent
+**Status:** done
 
 ### Behaviour
 
-- [ ] An archive whose schema version is **lower** than this installation's imports successfully;
+- [x] An archive whose schema version is **lower** than this installation's imports successfully;
       fields the older archive does not carry take the defaults the models already apply
-- [ ] An archive whose schema version is **higher** is refused, with a message telling the user to
+- [x] An archive whose schema version is **higher** is refused, with a message telling the user to
       update this installation. It is never partially applied — importing it would mean silently
       discarding fields the archive contains, which is data loss dressed as a feature
-- [ ] A refused archive is visibly distinguishable in the archive list, so the user sees why it
+- [x] A refused archive is visibly distinguishable in the archive list, so the user sees why it
       cannot be used before selecting it
-- [ ] A file that is not JSON is refused with a readable error
-- [ ] A file that is JSON but not an RPBoard archive is refused with a readable error
-- [ ] An archive with a missing, non-numeric or otherwise unreadable version field is refused
-- [ ] A truncated archive is refused
-- [ ] Every refusal leaves the database completely untouched, and no backup is consumed for an
+- [x] A file that is not JSON is refused with a readable error
+- [x] A file that is JSON but not an RPBoard archive is refused with a readable error
+- [x] An archive with a missing, non-numeric or otherwise unreadable version field is refused
+- [x] A truncated archive is refused
+- [x] Every refusal leaves the database completely untouched, and no backup is consumed for an
       import that never began
-- [ ] The format version is checked as well as the schema version, with its own message — the two
+- [x] The format version is checked as well as the schema version, with its own message — the two
       numbers mean different things
 
 ### Architecture
 
-- [ ] The compatibility decision is a function of the envelope alone, with no database open, so it
+- [x] The compatibility decision is a function of the envelope alone, with no database open, so it
       is testable with no I/O at all
-- [ ] Accepting lower schema versions relies on default-tolerance the models already have — this
+- [x] Accepting lower schema versions relies on default-tolerance the models already have — this
       is existing behaviour being used, not new leniency being added
 
 ### Tests
 
-- [ ] Pure: equal schema version accepted; lower accepted; higher refused. Asserted on the policy
+- [x] Pure: equal schema version accepted; lower accepted; higher refused. Asserted on the policy
       itself, no database open
-- [ ] Pure: an archive from a lower schema version imports and the fields it lacks hold the models'
+- [x] Pure: an archive from a lower schema version imports and the fields it lacks hold the models'
       documented defaults
-- [ ] Pure: not-JSON, JSON-but-not-an-archive, missing version, non-numeric version, and truncated
+- [x] Pure: not-JSON, JSON-but-not-an-archive, missing version, non-numeric version, and truncated
       payload each produce a distinguishable error
-- [ ] Against the in-memory fake: every refusal case leaves the stored state byte-identical to
+- [x] Against the in-memory fake: every refusal case leaves the stored state byte-identical to
       before
-- [ ] Widget: an archive with a higher schema version surfaces the update-this-installation
+- [x] Widget: an archive with a higher schema version surfaces the update-this-installation
       message instead of an import affordance
+
+## Comments
+
+Implemented in `e572d2f`, completed in `07e1e97`.
+
+`e572d2f` relaxed the policy asymmetrically (equal and lower schema versions
+import, a higher one is refused with the update-this-installation message)
+and added the `formatVersion` check with its own message. Accepting a lower
+version relies on the default-tolerance the models already have; no new
+fallback logic was written. The two assertions that pinned the strict interim
+rule were updated, since relaxing that rule is what this ticket is for.
+
+`07e1e97` closed a gap found while auditing this ticket: the transport was
+swallowing every decode failure, so a non-JSON file, a truncated archive, an
+unreadable version field and a mismatched `formatVersion` all vanished from
+the archive list with no message, which is the confusing failure this ticket
+exists to remove. `listArchives` now returns archives and refused entries
+separately, and the screen renders a refused entry with the codec's own
+reason and no import affordance. An undecodable file is still never surfaced
+as a usable archive, which is the pre-existing invariant it had to keep.

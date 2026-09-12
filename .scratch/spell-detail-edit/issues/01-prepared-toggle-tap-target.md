@@ -2,7 +2,7 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Parent spec:** `.scratch/spell-detail-edit/PRD.md` — read it first; it records every decision and the alternatives that were rejected. This ticket implements only the "prepared circle gets a real hit target" decision, as a prefactor for ticket 02.
 
@@ -20,22 +20,33 @@ It lands first because ticket 02 makes the spell row itself tappable. Once that 
 
 ### The gesture gets easier to hit
 
-- [ ] Tapping anywhere in the spell row's leading area — not only on the circle glyph — toggles the spell's prepared state.
-- [ ] The tap target is at least the size Flutter's own icon-button affordances use, so it is comfortable on a phone.
-- [ ] The row's visual layout is unchanged: the circle is the same glyph at the same size, in the same position, with the same colours for prepared and unprepared.
-- [ ] The rest of the row — name, the school / casting time / damage subtitle, the delete button — is unmoved and unchanged.
+- [x] Tapping anywhere in the spell row's leading area — not only on the circle glyph — toggles the spell's prepared state.
+- [x] The tap target is at least the size Flutter's own icon-button affordances use, so it is comfortable on a phone.
+- [x] The row's visual layout is unchanged: the circle is the same glyph at the same size, in the same position, with the same colours for prepared and unprepared.
+- [x] The rest of the row — name, the school / casting time / damage subtitle, the delete button — is unmoved and unchanged.
 
 ### Nothing about the rule changes
 
-- [ ] Tapping an unprepared, non-cantrip spell below the limit prepares it, and the prepared count chip updates immediately.
-- [ ] Tapping a prepared spell un-prepares it, and this is never refused, including from an over-limit state.
-- [ ] Tapping an unprepared spell once the prepared limit is reached changes nothing and shows the snack bar naming the limit.
-- [ ] Tapping a cantrip's circle changes nothing and shows no message.
-- [ ] With the prepared limit at zero, every toggle is accepted and no chip is shown, exactly as before.
+- [x] Tapping an unprepared, non-cantrip spell below the limit prepares it, and the prepared count chip updates immediately.
+- [x] Tapping a prepared spell un-prepares it, and this is never refused, including from an over-limit state.
+- [x] Tapping an unprepared spell once the prepared limit is reached changes nothing and shows the snack bar naming the limit.
+- [x] Tapping a cantrip's circle changes nothing and shows no message.
+- [x] With the prepared limit at zero, every toggle is accepted and no chip is shown, exactly as before.
 
 ### Regression safety
 
-- [ ] Every existing model test covering the prepared-spell limit passes untouched.
-- [ ] Every existing widget test covering the Magie tab passes untouched. No existing widget test drives the prepared toggle today — the two Magie tests reach the spellcasting-ability field and the spell-slot circles — so this ticket should need no test edits at all. If one breaks, it is because the new target changed which widget a circle locator finds, and the fix is to make that locator address what it acts on rather than to loosen it.
-- [ ] No change to the Character model in this ticket — the gesture's rule already lives there and is only called, never revised.
-- [ ] `flutter analyze` is clean and the full test suite is green.
+- [x] Every existing model test covering the prepared-spell limit passes untouched.
+- [x] Every existing widget test covering the Magie tab passes untouched. No existing widget test drives the prepared toggle today — the two Magie tests reach the spellcasting-ability field and the spell-slot circles — so this ticket should need no test edits at all. If one breaks, it is because the new target changed which widget a circle locator finds, and the fix is to make that locator address what it acts on rather than to loosen it.
+- [x] No change to the Character model in this ticket — the gesture's rule already lives there and is only called, never revised.
+- [x] `flutter analyze` is clean and the full test suite is green.
+
+## Comments
+
+Implemented in `22872f4`. The prepared circle sits in an explicit 40x40 box
+with `HitTestBehavior.opaque`, anchored so the glyph keeps its size and
+position; the box claims space `ListTile` already reserves for its leading
+column, so nothing in the row moves.
+
+Verified: `flutter analyze` clean (no errors or warnings) and the full suite
+green, with every pre-existing prepared-spell model test and Magie widget
+test passing unedited, which is the ticket's own regression-safety criterion.

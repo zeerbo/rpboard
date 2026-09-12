@@ -2,7 +2,7 @@
 
 **Blocked by:** 01 — A real tap target for the prepared toggle.
 
-**Status:** ready-for-agent
+**Status:** done
 
 **Parent spec:** `.scratch/spell-detail-edit/PRD.md` — read it first; it records every decision and the alternatives that were rejected.
 
@@ -26,55 +26,73 @@ Out of scope, as recorded in the spec: no separate read-only detail view, no del
 
 ### Opening a spell
 
-- [ ] Each spell row shows a pencil button, placed before the delete button, styled as the pencil on the attack and inventory rows is.
-- [ ] Tapping the pencil opens the spell dialog.
-- [ ] Tapping the row outside the prepared circle opens the same dialog, through the same code path.
-- [ ] Tapping the prepared circle still toggles preparation and does not open the dialog.
-- [ ] The dialog opens with all ten of the spell's fields filled in with its current values.
-- [ ] The dialog's title is unchanged from the one used when adding a spell.
-- [ ] Adding a new spell still opens the same dialog with empty fields and works exactly as before.
+- [x] Each spell row shows a pencil button, placed before the delete button, styled as the pencil on the attack and inventory rows is.
+- [x] Tapping the pencil opens the spell dialog.
+- [x] Tapping the row outside the prepared circle opens the same dialog, through the same code path.
+- [x] Tapping the prepared circle still toggles preparation and does not open the dialog.
+- [x] The dialog opens with all ten of the spell's fields filled in with its current values.
+- [x] The dialog's title is unchanged from the one used when adding a spell.
+- [x] Adding a new spell still opens the same dialog with empty fields and works exactly as before.
 
 ### Saving and cancelling
 
-- [ ] Saving writes every edited field onto the character immediately, with no further save action required by the player.
-- [ ] Saving an edit leaves every other spell in the list untouched.
-- [ ] Cancelling the dialog changes nothing about the spell, including its prepared state.
-- [ ] An edit survives switching away from the Magie tab and back.
+- [x] Saving writes every edited field onto the character immediately, with no further save action required by the player.
+- [x] Saving an edit leaves every other spell in the list untouched.
+- [x] Cancelling the dialog changes nothing about the spell, including its prepared state.
+- [x] An edit survives switching away from the Magie tab and back.
 - [ ] An edit survives closing and reopening the app.
-- [ ] Editing a spell's level moves its row into that level's group in the list.
-- [ ] Deleting a spell still works with a single tap on the delete button, unchanged.
+- [x] Editing a spell's level moves its row into that level's group in the list.
+- [x] Deleting a spell still works with a single tap on the delete button, unchanged.
 
 ### Preparation under an edit
 
-- [ ] Editing a prepared, non-cantrip spell leaves it prepared.
-- [ ] Editing an unprepared spell leaves it unprepared.
-- [ ] The prepared flag the dialog hands to the model is ignored in both directions — preparation can never be set or cleared by editing a spell's descriptive fields.
-- [ ] Editing a prepared spell down to level zero clears its prepared flag, with no message shown.
-- [ ] Editing a cantrip up to a non-zero level leaves it unprepared.
-- [ ] The prepared count chip reads correctly after any edit.
-- [ ] An edit can never push the prepared count above the limit.
-- [ ] A spell added through the dialog arrives unprepared.
+- [x] Editing a prepared, non-cantrip spell leaves it prepared.
+- [x] Editing an unprepared spell leaves it unprepared.
+- [x] The prepared flag the dialog hands to the model is ignored in both directions — preparation can never be set or cleared by editing a spell's descriptive fields.
+- [x] Editing a prepared spell down to level zero clears its prepared flag, with no message shown.
+- [x] Editing a cantrip up to a non-zero level leaves it unprepared.
+- [x] The prepared count chip reads correctly after any edit.
+- [x] An edit can never push the prepared count above the limit.
+- [x] A spell added through the dialog arrives unprepared.
 
 ### The Character owns the write
 
-- [ ] Character exposes a single method that replaces the spell at a given position with an edited one, sitting with the other prepared-spell and spell-slot rules.
-- [ ] That method resolves the prepared flag itself, as described above.
-- [ ] A position outside the spell list is a no-op, consistent with the neighbouring spell-slot methods.
-- [ ] All ten descriptive fields are taken from the incoming spell.
-- [ ] The tab holds no copy of the prepared rule — it calls the model and renders the result.
+- [x] Character exposes a single method that replaces the spell at a given position with an edited one, sitting with the other prepared-spell and spell-slot rules.
+- [x] That method resolves the prepared flag itself, as described above.
+- [x] A position outside the spell list is a no-op, consistent with the neighbouring spell-slot methods.
+- [x] All ten descriptive fields are taken from the incoming spell.
+- [x] The tab holds no copy of the prepared rule — it calls the model and renders the result.
 
 ### Reading a spell
 
-- [ ] The description field starts at three lines and grows with its content up to eight.
-- [ ] A spell with a short description opens a dialog no taller than it is today.
-- [ ] A description longer than eight lines remains fully readable inside the field.
-- [ ] The other nine fields keep their current single-line form, order and labels, and the dialog's width is unchanged.
+- [x] The description field starts at three lines and grows with its content up to eight.
+- [x] A spell with a short description opens a dialog no taller than it is today.
+- [x] A description longer than eight lines remains fully readable inside the field.
+- [x] The other nine fields keep their current single-line form, order and labels, and the dialog's width is unchanged.
 
 ### Tests
 
-- [ ] Model tests cover the new Character method at the Character seam, with no widget tree: prepared preserved, unprepared preserved, the caller's flag ignored both ways, cleared at level zero, unprepared when rising from level zero, all ten fields overwritten, an out-of-range position a no-op, the prepared count and over-limit flag correct afterwards, and a round trip through the Character's map serialisation.
-- [ ] One widget test at the existing character-sheet seam opens a sheet holding a prepared spell, opens that spell from its row, changes a field, saves, and asserts both that the change is on the live character and that the spell is still prepared.
-- [ ] No new test seam is introduced — the spell tab is not mounted on its own.
-- [ ] The widget test addresses the spell row's controls unambiguously. Worth knowing before writing it: the spell-slot circles and the prepared circle are drawn with overlapping icon vocabulary, so a sheet holding both spell slots and spells makes a bare icon locator ambiguous in a way the current Magie tests never hit.
-- [ ] Every existing model and widget test passes untouched.
-- [ ] `flutter analyze` clean; `flutter test` green.
+- [x] Model tests cover the new Character method at the Character seam, with no widget tree: prepared preserved, unprepared preserved, the caller's flag ignored both ways, cleared at level zero, unprepared when rising from level zero, all ten fields overwritten, an out-of-range position a no-op, the prepared count and over-limit flag correct afterwards, and a round trip through the Character's map serialisation.
+- [x] One widget test at the existing character-sheet seam opens a sheet holding a prepared spell, opens that spell from its row, changes a field, saves, and asserts both that the change is on the live character and that the spell is still prepared.
+- [x] No new test seam is introduced — the spell tab is not mounted on its own.
+- [x] The widget test addresses the spell row's controls unambiguously. Worth knowing before writing it: the spell-slot circles and the prepared circle are drawn with overlapping icon vocabulary, so a sheet holding both spell slots and spells makes a bare icon locator ambiguous in a way the current Magie tests never hit.
+- [x] Every existing model and widget test passes untouched.
+- [x] `flutter analyze` clean; `flutter test` green.
+
+## Comments
+
+Implemented in `e5d9284`. `Character.updateSpell` owns the prepared-flag
+rule; the Magie tab calls it and holds no copy of the rule. Nine model tests
+cover every branch (flag carried forward in both directions, the caller's
+flag ignored, cleared at level zero, unprepared when rising from level zero,
+all ten fields overwritten, out-of-range a no-op, the count and over-limit
+flag afterwards, and the map round trip), plus one widget test at the
+character-sheet seam that opens a prepared spell from its row, edits it,
+saves, and asserts both the change and the surviving prepared flag.
+
+One criterion is left unticked: "An edit survives closing and reopening the
+app." Nothing in this suite launches and relaunches the app, so it was not
+verified end to end. What is verified is the step it rests on: the edit is
+written through to the Database, asserted by the widget test. Persistence
+across a relaunch then follows from the SQLite adapter's existing behaviour.
+Stated as a deduction, not as a check.

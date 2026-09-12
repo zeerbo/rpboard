@@ -12,14 +12,22 @@ the new step would never run.
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The SQLite adapter requests the version derived from the production ladder's last step, not a
+- [x] The SQLite adapter requests the version derived from the production ladder's last step, not a
       hand-written number
-- [ ] The value requested is unchanged from what ships today, so every existing install is
+- [x] The value requested is unchanged from what ships today, so every existing install is
       untouched — this is behaviour-preserving
-- [ ] A test asserts the adapter's requested version equals the ladder's last step's version, so
+- [x] A test asserts the adapter's requested version equals the ladder's last step's version, so
       appending a step without updating anything else cannot silently skip it
-- [ ] The existing migration tests still pass unchanged
-- [ ] `Migrations` stays below the `Database` seam and the seam's interface is untouched
+- [x] The existing migration tests still pass unchanged
+- [x] `Migrations` stays below the `Database` seam and the seam's interface is untouched
       (ADR-0002, ADR-0005)
+
+## Comments
+
+Implemented in `9ee36f5`. `Migrations.latestVersion` reads the ladder's last
+step and `openAppDatabase` requests that instead of a literal. The requested
+value is unchanged (4), so installed databases are untouched; a test pins the
+adapter's requested version to the ladder's last step, so appending a step
+without touching anything else cannot silently skip it.

@@ -1,6 +1,6 @@
 # Data transfer between installations — AppSnapshot
 
-Status: ready-for-agent
+Status: done
 
 ## Problem Statement
 
