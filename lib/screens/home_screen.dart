@@ -8,54 +8,75 @@ class HomeScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppTheme.primary, AppTheme.background],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 48),
-                const Text(
-                  '⚔ RPBoard',
-                  style: TextStyle(
-                    color: AppTheme.accent,
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                  ),
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [AppTheme.primary, AppTheme.background],
+              ),
+            ),
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 48),
+                    const Text(
+                      '⚔ RPBoard',
+                      style: TextStyle(
+                        color: AppTheme.accent,
+                        fontSize: 36,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Scegli la modalità',
+                      style: TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 16),
+                    ),
+                    const SizedBox(height: 64),
+                    _ModeCard(
+                      title: 'Modalità Giocatore',
+                      subtitle: 'Schede personaggio 5e',
+                      icon: Icons.person,
+                      color: AppTheme.accent,
+                      onTap: () => context.go('/characters'),
+                    ),
+                    const SizedBox(height: 20),
+                    _ModeCard(
+                      title: 'Modalità Master',
+                      subtitle: 'Campagne, capitoli, sessioni',
+                      icon: Icons.auto_stories,
+                      color: AppTheme.masterRed,
+                      onTap: () => context.go('/campaigns'),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Scegli la modalità',
-                  style: TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 16),
-                ),
-                const SizedBox(height: 64),
-                _ModeCard(
-                  title: 'Modalità Giocatore',
-                  subtitle: 'Schede personaggio 5e',
-                  icon: Icons.person,
-                  color: AppTheme.accent,
-                  onTap: () => context.go('/characters'),
-                ),
-                const SizedBox(height: 20),
-                _ModeCard(
-                  title: 'Modalità Master',
-                  subtitle: 'Campagne, capitoli, sessioni',
-                  icon: Icons.auto_stories,
-                  color: AppTheme.masterRed,
-                  onTap: () => context.go('/campaigns'),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
+          // Trasferisci dati: an icon control, deliberately not a third
+          // _ModeCard — PG Mode and Master Mode stay the app's only two
+          // faces (CONTEXT.md). Reached as a utility, not a way to play.
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: IconButton(
+                  icon: const Icon(Icons.swap_horiz),
+                  color: AppTheme.onSurfaceMuted,
+                  tooltip: 'Trasferisci dati',
+                  onPressed: () => context.go('/data-transfer'),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

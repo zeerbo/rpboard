@@ -1,0 +1,130 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../core/app_info.dart';
+import '../core/database/db.dart';
+import '../core/database/migrations.dart';
+import '../core/sync/snapshot_codec.dart';
+import '../core/sync/sync_transport.dart';
+import '../core/sync/version_policy.dart';
+import 'character_provider.dart';
+
+/// Published seams for the data-transfer feature — analogous to
+/// [databaseProvider]: a test overrides these with its own fakes, never a
+/// static global.
+final syncTransportProvider = Provider<SyncTransport>((ref) => FolderSyncTransport());
+final snapshotCodecProvider = Provider<SnapshotCodec>((ref) => const SnapshotCodec());
+final schemaVersionPolicyProvider =
+    Provider<SchemaVersionPolicy>((ref) => const SchemaVersionPolicy());
+
+/// This installation's own schema version — the single source of truth from
+/// the `schema-version-single-source` prefactor, read here instead of a
+/// second hand-written literal.
+int localSchemaVersion() => const Migrations().latestVersion;
+
+/// Thrown by [DataTransferNotifier.importArchive] when [SchemaVersionPolicy]
+/// refuses the archive. Carries the user-facing message the confirmation
+/// flow shows instead of proceeding.
+class SnapshotVersionRefusedException implements Exception {
+  final String message;
+  const SnapshotVersionRefusedException(this.message);
+
+  @override
+  String toString() => message;
+}
+
+/// Everything the Trasferisci dati screen needs to render itself: the
+/// exchange folder's path, the archives found there, and the local
+/// Character count the confirmation dialog compares against an archive's.
+class DataTransferViewState {
+  final String exchangeFolderPath;
+  final List<ArchiveInfo> archives;
+  final int localCharacterCount;
+
+  const DataTransferViewState({
+    required this.exchangeFolderPath,
+    required this.archives,
+    required this.localCharacterCount,
+  });
+}
+
+/// Orchestrates the three layers the PRD names — [SyncTransport] for I/O,
+/// [SnapshotCodec] for format, the `Database` seam for state — into the two
+/// user-facing actions the screen offers: export and import. Neither layer
+/// talks to the others directly; this notifier is the one place that wires
+/// them together, the same role a screen's list notifier plays for CRUD.
+class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
+  @override
+  Future<DataTransferViewState> build() async {
+    final transport = ref.read(syncTransportProvider);
+    final db = ref.read(databaseProvider);
+    final folderPath = await transport.exchangeFolderPath();
+    final archives = await transport.listArchives();
+    final characters = await db.getCharacters();
+    return DataTransferViewState(
+      exchangeFolderPath: folderPath,
+      archives: archives,
+      localCharacterCount: characters.length,
+    );
+  }
+
+  /// Exports the complete current state to a new archive file, then
+  /// refreshes the screen's view of the exchange folder.
+  Future<void> exportNow() async {
+    final db = ref.read(databaseProvider);
+    final transport = ref.read(syncTransportProvider);
+    final codec = ref.read(snapshotCodecProvider);
+
+    final snapshot = await db.exportSnapshot();
+    final envelopeJson = codec.encode(
+      snapshot: snapshot,
+      schemaVersion: localSchemaVersion(),
+      appVersion: kAppVersion,
+      exportedAt: DateTime.now(),
+      deviceLabel: transport.deviceLabel(),
+    );
+    await transport.writeArchive(envelopeJson);
+    ref.invalidateSelf();
+  }
+
+  /// The version-policy outcome for [archive] against this installation —
+  /// what the confirmation flow checks before offering to import at all.
+  SchemaVersionOutcome evaluateVersion(ArchiveInfo archive) {
+    final policy = ref.read(schemaVersionPolicyProvider);
+    return policy.evaluate(
+      localSchemaVersion: localSchemaVersion(),
+      archiveSchemaVersion: archive.envelope.schemaVersion,
+    );
+  }
+
+  /// A user-facing explanation for why [archive] was refused. Only
+  /// meaningful when [evaluateVersion] didn't return
+  /// [SchemaVersionOutcome.accepted].
+  String refusalMessageFor(ArchiveInfo archive) {
+    final policy = ref.read(schemaVersionPolicyProvider);
+    return policy.refusalMessage(
+      localSchemaVersion: localSchemaVersion(),
+      archiveSchemaVersion: archive.envelope.schemaVersion,
+    );
+  }
+
+  /// Replaces the local Characters with [archive]'s content, atomically,
+  /// through the `Database` seam. Throws [SnapshotVersionRefusedException]
+  /// without touching the database at all when the version policy refuses
+  /// the archive.
+  Future<void> importArchive(ArchiveInfo archive) async {
+    final outcome = evaluateVersion(archive);
+    if (outcome != SchemaVersionOutcome.accepted) {
+      throw SnapshotVersionRefusedException(refusalMessageFor(archive));
+    }
+
+    final db = ref.read(databaseProvider);
+    await db.importSnapshot(archive.envelope.snapshot);
+    ref.invalidateSelf();
+    ref.invalidate(characterListProvider);
+  }
+}
+
+final dataTransferProvider =
+    AsyncNotifierProvider<DataTransferNotifier, DataTransferViewState>(
+  DataTransferNotifier.new,
+);

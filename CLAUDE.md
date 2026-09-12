@@ -13,3 +13,7 @@ Default canonical labels (needs-triage, needs-info, ready-for-agent, ready-for-h
 ### Domain docs
 
 Single-context repo: one `CONTEXT.md` + `docs/adr/` at repo root. See `docs/agents/domain.md`.
+
+### Data transfer
+
+Touching the data model — adding a table, adding a field a user's data depends on — means extending `AppSnapshot` and its round-trip test, or the new data is silently dropped by "Trasferisci dati". See [ADR-0007](docs/adr/0007-app-snapshot-data-transfer.md).

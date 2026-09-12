@@ -9,6 +9,7 @@ import '../../models/campaign.dart';
 import '../../models/chapter.dart';
 import '../../models/session_screen.dart';
 import '../../models/component.dart';
+import '../../models/app_snapshot.dart';
 import '../ordering/ordered.dart';
 import 'migrations.dart';
 
@@ -60,6 +61,22 @@ abstract interface class Database {
 
   /// See [reorderChapters] — same atomic, changed-rows-only contract.
   Future<void> reorderComponents(List<SessionComponent> components);
+
+  // ─── Data transfer (AppSnapshot) ────────────────────────────────────────────
+  //
+  // See the data-transfer PRD and ADR-0007. Today's [AppSnapshot] covers
+  // Characters only; a later ticket adds Campaign material as more fields on
+  // that class, with no change to either method's signature here.
+
+  /// Reads the complete application state as a point-in-time [AppSnapshot].
+  Future<AppSnapshot> exportSnapshot();
+
+  /// Replaces every aggregate [AppSnapshot] carries with [snapshot]'s
+  /// content, atomically: every table it owns is deleted explicitly and then
+  /// repopulated, inside one transaction, never relying on `ON DELETE
+  /// CASCADE`. Replace semantics, not upsert — nothing of the previous
+  /// content survives an import.
+  Future<void> importSnapshot(AppSnapshot snapshot);
 }
 
 /// The published seam. Default builds the real on-device SQLite store; tests
@@ -98,6 +115,37 @@ Future<sql.Database> openAppDatabase(String path) {
 /// where a pragma can still take effect. See ADR-0006.
 Future<void> _enforceForeignKeys(sql.Database db) =>
     db.execute('PRAGMA foreign_keys = ON');
+
+/// Reads the complete character roster from [db] as an [AppSnapshot]. A
+/// connection-level counterpart to [SqfliteDatabase.exportSnapshot], pulled
+/// out to a top-level function — like [openAppDatabase] — so a test can
+/// exercise it against a real ffi connection without going through
+/// [SqfliteDatabase]'s `path_provider`-based path resolution, which has no
+/// implementation in a `flutter test` process (ADR-0006).
+Future<AppSnapshot> exportSnapshotFrom(sql.Database db) async {
+  final rows = await db.query('characters', orderBy: 'name ASC');
+  return AppSnapshot(characters: rows.map(Character.fromMap).toList());
+}
+
+/// Replaces every table [AppSnapshot] currently carries — today just
+/// `characters` — with [snapshot]'s content, inside one transaction. Deletes
+/// are explicit and never rely on `ON DELETE CASCADE` (see the data-transfer
+/// PRD's "Orphan rows" note): a failure partway through must leave [db]
+/// exactly as it was before this call, which is asserted against a real ffi
+/// connection in `test/core/database/snapshot_import_execution_test.dart` —
+/// the suite's third documented exception to the pure-test rule, after the
+/// migration execution test (ADR-0005) and the foreign-key test (ADR-0006).
+/// The in-memory fake has no transaction, so it cannot prove a rollback;
+/// atomicity is the entire justification for a destructive import, so it is
+/// asserted where it actually lives.
+Future<void> importSnapshotInto(sql.Database db, AppSnapshot snapshot) async {
+  await db.transaction((txn) async {
+    await txn.delete('characters');
+    for (final character in snapshot.characters) {
+      await txn.insert('characters', character.toMap());
+    }
+  });
+}
 
 /// The real SQLite adapter. Lazy-open, ffi init, and path resolution are all
 /// private here; sqflite's own [sql.Database] type never leaves this file.
@@ -339,4 +387,18 @@ class SqfliteDatabase implements Database {
   @override
   Future<void> reorderComponents(List<SessionComponent> components) =>
       _reorderRows('components', components, (c) => c.toMap());
+
+  // ─── Data transfer (AppSnapshot) ────────────────────────────────────────────
+
+  @override
+  Future<AppSnapshot> exportSnapshot() async {
+    final d = await _conn;
+    return exportSnapshotFrom(d);
+  }
+
+  @override
+  Future<void> importSnapshot(AppSnapshot snapshot) async {
+    final d = await _conn;
+    await importSnapshotInto(d, snapshot);
+  }
 }

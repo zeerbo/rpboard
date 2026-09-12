@@ -65,6 +65,14 @@ _Avoid_: DM mode, GM mode
 The two modes in which a SessionScreen is presented inside Master Mode: Edit Mode is preparation (adding, reordering and configuring SessionComponents), Play Mode is presenting the prepared screens at the table. Every kind of SessionComponent renders in both; the mode decides which affordances are offered, never which component exists.
 _Avoid_: Preview, presentation mode, read-only mode
 
+**AppSnapshot**:
+The complete application state at one instant — every Character, and (as of the ticket that adds it) every Campaign with its owned Chapters, SessionScreens and SessionComponents — held as the same typed domain models the rest of the app uses, never a raw map. Today it carries Characters only; Campaign material is added by a later ticket as more fields, not a reshape. It is what "Trasferisci dati" exports to and imports from an archive file. Pure data with no I/O: `SnapshotCodec` serializes it to a versioned JSON envelope, `SyncTransport` moves the bytes, and the `Database` seam's `exportSnapshot`/`importSnapshot` read and replace it. **Invariant**: it covers every aggregate the user owns — a table added to the schema without a matching addition here is silently dropped on transfer, which is why touching the data model means extending `AppSnapshot` and its round-trip test (see `CLAUDE.md`). See [ADR-0007](docs/adr/0007-app-snapshot-data-transfer.md).
+_Avoid_: Backup (that's the separate byte-copy safety net taken before an import), export/import map, sync payload
+
+**Trasferisci dati**:
+The screen, reached from an icon control on the home screen (never a third mode card), that exports the current installation's `AppSnapshot` to a file and imports one back. Import is destructive by design — it replaces local state rather than merging into it — guarded by a confirmation naming the Character/Campaign counts on both sides and, before it touches anything, a byte-copy backup of the database. See [ADR-0007](docs/adr/0007-app-snapshot-data-transfer.md).
+_Avoid_: Sincronizza (it promises automatic, two-way behaviour this mechanism does not perform), Sync, Backup screen (backup is one part of it, not the whole)
+
 ## Where the decisions live
 
 This file defines the words. The agreed refactoring work from the [architecture review](docs/architecture-review.html) is specified elsewhere — one PRD per candidate, plus an ADR where the decision is hard to reverse. Planned order: C1 → C5 → C3 → C4 → C6 → C7.
@@ -79,3 +87,4 @@ This file defines the words. The agreed refactoring work from the [architecture 
 | C6 | Schema migrations | [PRD](.scratch/schema-migrations/PRD.md) | [ADR-0005](docs/adr/0005-schema-migrations.md) |
 | C7 | Decomposing the Character sheet | [PRD](.scratch/character-sheet-decomposition/PRD.md) | follows ADR-0004 |
 | C8 | "Scena" as vocabulary | — | recorded above, under SessionScreen |
+| C9 | Data transfer between installations (AppSnapshot) | [PRD](.scratch/data-transfer/PRD.md) | [ADR-0007](docs/adr/0007-app-snapshot-data-transfer.md) |

@@ -4,6 +4,7 @@ import 'package:rpboard/models/campaign.dart';
 import 'package:rpboard/models/chapter.dart';
 import 'package:rpboard/models/session_screen.dart';
 import 'package:rpboard/models/component.dart';
+import 'package:rpboard/models/app_snapshot.dart';
 
 /// A behavioral [Database] fake for provider-level tests. Test-only — lives
 /// under `test/`, never `lib/`, so no shipped code can depend on it.
@@ -212,6 +213,33 @@ class InMemoryDatabase implements Database {
       if (current != null && current.order == c.order) continue;
       _components[c.id] = c;
     }
+  }
+
+  // ─── Data transfer (AppSnapshot) ────────────────────────────────────────────
+  //
+  // Mirrors SqfliteDatabase's contract exactly (ADR-0002 requires it): a
+  // sorted, defensively-copied read for export, and a full clear-then-insert
+  // replace for import — applied as one indivisible synchronous pass (no
+  // `await` between the clear and the inserts), matching the real adapter's
+  // single-transaction, all-or-nothing behavior as an observable contract.
+  // Today this only touches `_characters`; a later ticket adding Campaign
+  // material to AppSnapshot extends this the same way it extends the real
+  // adapter's transaction.
+
+  @override
+  Future<AppSnapshot> exportSnapshot() async {
+    final list = _characters.values.toList()
+      ..sort((a, b) => a.name.compareTo(b.name)); // name ASC, like getCharacters
+    return AppSnapshot(
+      characters: list.map((c) => Character.fromMap(c.toMap())).toList(),
+    );
+  }
+
+  @override
+  Future<void> importSnapshot(AppSnapshot snapshot) async {
+    _characters
+      ..clear()
+      ..addEntries(snapshot.characters.map((c) => MapEntry(c.id, c)));
   }
 
   /// The real adapter lets SQLite raise on a primary key collision for the

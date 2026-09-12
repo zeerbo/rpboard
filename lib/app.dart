@@ -9,12 +9,20 @@ import 'screens/master/campaign_screen.dart';
 import 'screens/master/chapter_screen.dart';
 import 'screens/master/session/session_edit_screen.dart';
 import 'screens/master/session/session_play_screen.dart';
+import 'screens/data_transfer/data_transfer_screen.dart';
 
 final _router = GoRouter(
   routes: [
     GoRoute(
       path: '/',
       builder: (_, __) => const HomeScreen(),
+    ),
+    // ── Trasferisci dati ─────────────────────────────────────────────────────
+    // A route, not a third mode: reached from an icon control on the home
+    // screen (data-transfer PRD, "The screen is a route, not a third mode").
+    GoRoute(
+      path: '/data-transfer',
+      builder: (_, _) => const DataTransferScreen(),
     ),
     // ── PG Mode ───────────────────────────────────────────────────────────────
     GoRoute(
