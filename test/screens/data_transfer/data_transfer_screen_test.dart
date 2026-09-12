@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:rpboard/core/database/db.dart';
 import 'package:rpboard/core/database/migrations.dart';
 import 'package:rpboard/core/sync/snapshot_codec.dart';
@@ -35,6 +36,39 @@ void main() {
   setUp(() {
     db = InMemoryDatabase();
     transport = FakeSyncTransport();
+  });
+
+  testWidgets('the back control returns to the home screen', (tester) async {
+    // The home screen reaches this route with `context.go`, which replaces
+    // the stack — there is nothing to pop, so the AppBar would imply no back
+    // button. Starting the router here reproduces that.
+    final router = GoRouter(initialLocation: '/data-transfer', routes: [
+      GoRoute(
+        path: '/',
+        builder: (_, _) => const Scaffold(body: Text('HOME SCREEN')),
+      ),
+      GoRoute(
+        path: '/data-transfer',
+        builder: (_, _) => const DataTransferScreen(),
+      ),
+    ]);
+    addTearDown(router.dispose);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          syncTransportProvider.overrideWithValue(transport),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+
+    expect(find.text('HOME SCREEN'), findsOneWidget);
   });
 
   testWidgets('shows the exchange folder path', (tester) async {

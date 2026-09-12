@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:path/path.dart' as p;
 
 import '../../core/database/db.dart';
@@ -141,7 +142,13 @@ class DataTransferScreen extends ConsumerWidget {
     final asyncState = ref.watch(dataTransferProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Trasferisci dati')),
+      appBar: AppBar(
+        title: const Text('Trasferisci dati'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.go('/'),
+        ),
+      ),
       body: asyncState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (err, _) => Center(child: Text('Errore: $err')),
