@@ -276,6 +276,57 @@ void main() {
       expect(tf.controller?.text, 'Saggezza');
       await unmountSheet(tester);
     });
+
+    // The spell-slot circles (Icons.circle / Icons.circle_outlined, in the
+    // "Slot Magia" section above the spell list) and the spell row's
+    // prepared circle (Icons.check_circle / Icons.circle_outlined) share
+    // icon vocabulary, so a bare `find.byIcon` would be ambiguous on a
+    // sheet holding both. This test addresses the spell row's pencil
+    // button by its `spell_edit_<index>` key instead, which names exactly
+    // the control it acts on regardless of how the row is laid out.
+    testWidgets('editing a prepared spell from its row updates the character and keeps it prepared', (tester) async {
+      final c = Character(id: 'c1', name: 'Aragorn', spells: [
+        Spell(
+          name: 'Dardo Incantato',
+          level: 1,
+          school: 'Invocazione',
+          prepared: true,
+          castingTime: '1 azione',
+          range: '18 metri',
+          components: 'V, S',
+          duration: 'Istantanea',
+          description: 'Tre dardi di forza magica colpiscono un bersaglio.',
+          damage: '1d4+1 forza',
+        ),
+      ]);
+      await db.insertCharacter(c);
+      await pumpSheet(tester, 'c1');
+
+      await tapTab(tester, 'Magie');
+      expect(container.read(characterProvider('c1')).value?.spells.single.prepared, isTrue);
+
+      final editButton = find.byKey(const ValueKey('spell_edit_0'));
+      await tester.ensureVisible(editButton);
+      await tester.pumpAndSettle();
+      await tester.tap(editButton);
+      await tester.pumpAndSettle();
+
+      // The dialog opened pre-filled with the spell's current values.
+      final nameField = tester.widget<TextField>(find.widgetWithText(TextField, 'Nome'));
+      expect(nameField.controller?.text, 'Dardo Incantato');
+      final damageField = tester.widget<TextField>(find.widgetWithText(TextField, 'Danno (es. 8d6 fuoco)'));
+      expect(damageField.controller?.text, '1d4+1 forza');
+
+      // Fix a typo in the name and save.
+      await tester.enterText(find.widgetWithText(TextField, 'Nome'), 'Dardo Incantatore');
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Salva'));
+      await tester.pumpAndSettle();
+
+      final updated = container.read(characterProvider('c1')).value!;
+      expect(updated.spells.single.name, 'Dardo Incantatore');
+      expect(updated.spells.single.prepared, isTrue);
+      await unmountSheet(tester);
+    });
   });
 
   group('Equipped items relocation (ticket 01)', () {
