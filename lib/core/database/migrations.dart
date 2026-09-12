@@ -217,6 +217,14 @@ class Migrations {
   /// [productionLadder]; tests inject a short fake ladder instead.
   final List<MigrationStep> ladder;
 
+  /// The schema version this ladder currently reaches — its last step's
+  /// version. The single source of truth for "what version should we open
+  /// at": `SqfliteDatabase`'s open call reads this instead of repeating a
+  /// hand-written literal, so a step appended to the ladder without touching
+  /// anything else can never be silently left unrequested. See the
+  /// `schema-version-single-source` prefactor.
+  int get latestVersion => ladder.last.version;
+
   /// The steps that carry a database from [oldVersion] to [newVersion], in
   /// ascending version order. Empty when [oldVersion] already equals
   /// [newVersion]. Never includes a step at or below [oldVersion] — an

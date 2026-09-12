@@ -81,7 +81,7 @@ Future<sql.Database> openAppDatabase(String path) {
   const migrations = Migrations();
   return sql.openDatabase(
     path,
-    version: 4,
+    version: migrations.latestVersion,
     onConfigure: _enforceForeignKeys,
     onCreate: (db, version) => migrations.apply(db, 0, version),
     onUpgrade: (db, oldVersion, newVersion) =>

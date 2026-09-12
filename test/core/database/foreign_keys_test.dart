@@ -94,6 +94,17 @@ void main() {
       expect(await foreignKeysSetting(db), 1);
     });
 
+    test('opens at the version derived from the production ladder\'s last '
+        'step, not a hand-written literal', () async {
+      // Ticket `schema-version-single-source`: the version `openAppDatabase`
+      // requests must come from `Migrations().latestVersion`, so appending a
+      // step to `productionLadder` without touching `db.dart` can never
+      // leave the adapter requesting a stale version.
+      final rows = await db.rawQuery('PRAGMA user_version');
+      expect(rows.first['user_version'], const Migrations().latestVersion);
+      expect(rows.first['user_version'], productionLadder.last.version);
+    });
+
     test('deleting a Campaign removes everything underneath it', () async {
       await seedChain(db);
 

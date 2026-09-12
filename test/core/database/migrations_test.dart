@@ -135,5 +135,35 @@ void main() {
 
       expect(migrations.stepsFrom(0, 4), productionLadder);
     });
+
+    test('latestVersion equals the ladder\'s last step\'s version', () {
+      const migrations = Migrations();
+
+      // This is the single source of truth `openAppDatabase` requests its
+      // schema version from — asserted here so appending a step to
+      // `productionLadder` without touching anything else can never leave
+      // the adapter requesting a stale version.
+      expect(migrations.latestVersion, productionLadder.last.version);
+      expect(migrations.latestVersion, 4);
+    });
+  });
+
+  group('latestVersion', () {
+    test('reads the last step of an arbitrary ladder, regardless of order', () {
+      expect(migrations.latestVersion, 4); // fakeLadder above, sorted 1..4
+
+      const shuffled = Migrations(
+        ladder: [
+          MigrationStep(version: 1, statements: ['a']),
+          MigrationStep(version: 3, statements: ['c']),
+          MigrationStep(version: 2, statements: ['b']),
+        ],
+      );
+      // `latestVersion` reads `ladder.last`, not the maximum version — the
+      // ladder is defined as already being in ascending, append-only order,
+      // so this documents that the getter trusts that invariant rather than
+      // re-sorting.
+      expect(shuffled.latestVersion, 2);
+    });
   });
 }
