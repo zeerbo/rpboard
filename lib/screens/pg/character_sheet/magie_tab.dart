@@ -179,6 +179,13 @@ class _MagieTabState extends State<MagieTab> {
             ...byLevel[level]!.map((e) => ListTile(
               dense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+              // Opens the same dialog as the pencil button below. The
+              // prepared circle's own GestureDetector (in `leading`) sits
+              // inside this tile and wins the gesture arena for taps that
+              // land on it, so this row-level tap only ever fires for taps
+              // outside that leading area — same as an IconButton inside a
+              // tappable ListTile never triggers the tile's own onTap.
+              onTap: () => _editSpell(c, e.key),
               leading: SizedBox(
                 // A larger, invisible hit area around the 20px glyph. 40 is
                 // the most this can grow to without shifting the title: a
@@ -212,9 +219,20 @@ class _MagieTabState extends State<MagieTab> {
                 if (e.value.castingTime.isNotEmpty) Text(e.value.castingTime, style: const TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 11)),
                 if (e.value.damage.isNotEmpty) Text('  •  ${e.value.damage}', style: const TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 11)),
               ]),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.danger),
-                onPressed: () => _edit(() => c.spells.removeAt(e.key)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    key: ValueKey('spell_edit_${e.key}'),
+                    icon: const Icon(Icons.edit_outlined, size: 18, color: AppTheme.accent),
+                    onPressed: () => _editSpell(c, e.key),
+                  ),
+                  IconButton(
+                    key: ValueKey('spell_delete_${e.key}'),
+                    icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.danger),
+                    onPressed: () => _edit(() => c.spells.removeAt(e.key)),
+                  ),
+                ],
               ),
             )),
           ],
@@ -231,6 +249,15 @@ class _MagieTabState extends State<MagieTab> {
   Future<void> _addSpell(Character c) async {
     final spell = await _showSpellDialog(Spell());
     if (spell != null) _edit(() => c.spells.add(spell));
+  }
+
+  /// Opens the spell dialog pre-filled with the spell at [index] and, on
+  /// save, writes the result through [Character.updateSpell] — the single
+  /// path that resolves the prepared flag, so this tab carries no copy of
+  /// that rule. Cancelling (a null result) leaves the spell untouched.
+  Future<void> _editSpell(Character c, int index) async {
+    final result = await _showSpellDialog(c.spells[index]);
+    if (result != null) _edit(() => c.updateSpell(index, result));
   }
 
   Future<Spell?> _showSpellDialog(Spell initial) {
@@ -271,7 +298,19 @@ class _MagieTabState extends State<MagieTab> {
                 Expanded(child: TextField(controller: dur, decoration: const InputDecoration(labelText: 'Durata'))),
               ]),
               const SizedBox(height: 8),
-              TextField(controller: desc, decoration: const InputDecoration(labelText: 'Descrizione'), maxLines: 3),
+              // Starts at 3 lines, like before, but grows with its content
+              // up to 8 — this is the one field that holds a paragraph
+              // rather than a phrase, and the main reason the detail is
+              // opened at all. A short description still renders a short
+              // (3-line) field; a longer one stays fully readable by
+              // scrolling within the field, since the dialog's content is
+              // already scrollable.
+              TextField(
+                controller: desc,
+                decoration: const InputDecoration(labelText: 'Descrizione'),
+                minLines: 3,
+                maxLines: 8,
+              ),
               const SizedBox(height: 8),
               TextField(controller: dmg, decoration: const InputDecoration(labelText: 'Danno (es. 8d6 fuoco)')),
             ],

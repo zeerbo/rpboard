@@ -1202,4 +1202,168 @@ void main() {
       expect(Character.fromMap(legacyMap).preparedSpellsMax, 0);
     });
   });
+
+  group('Character updateSpell (spell detail edit)', () {
+    // Same convention as the prepared-spell limit group above: a Character
+    // carrying `spells` in list order, addressed by the index `updateSpell`
+    // takes.
+    Character withSpells(List<Spell> spells, {int limit = 0}) =>
+        Character(id: 'c1', preparedSpellsMax: limit, spells: spells);
+
+    // A spell with all ten descriptive fields set to distinct, recognisable
+    // values, for the "all fields overwritten" and "round trip" tests.
+    Spell fullSpell({
+      String name = 'Palla di Fuoco',
+      int level = 3,
+      bool prepared = false,
+      String school = 'Invocazione',
+      String castingTime = '1 azione',
+      String range = '45 metri',
+      String components = 'V, S, M',
+      String duration = 'Istantanea',
+      String description = 'Una palla di fuoco esplode in un\'area.',
+      String damage = '8d6 fuoco',
+    }) =>
+        Spell(
+          name: name,
+          level: level,
+          prepared: prepared,
+          school: school,
+          castingTime: castingTime,
+          range: range,
+          components: components,
+          duration: duration,
+          description: description,
+          damage: damage,
+        );
+
+    test('an edit preserves the prepared flag of a prepared spell', () {
+      final c = withSpells([Spell(name: 'Scudo', level: 1, prepared: true)]);
+
+      c.updateSpell(0, Spell(name: 'Scudo', level: 1));
+
+      expect(c.spells[0].prepared, isTrue);
+    });
+
+    test('an edit preserves the unprepared state of an unprepared spell', () {
+      final c = withSpells([Spell(name: 'Scudo', level: 1, prepared: false)]);
+
+      c.updateSpell(0, Spell(name: 'Scudo', level: 1));
+
+      expect(c.spells[0].prepared, isFalse);
+    });
+
+    test('the caller-supplied prepared value is ignored in both directions', () {
+      final preparedCase = withSpells([Spell(name: 'Scudo', level: 1, prepared: true)]);
+      // Caller passes prepared: false on a spell that is actually prepared —
+      // the flag must not follow the caller.
+      preparedCase.updateSpell(0, Spell(name: 'Scudo', level: 1, prepared: false));
+      expect(preparedCase.spells[0].prepared, isTrue);
+
+      final unpreparedCase = withSpells([Spell(name: 'Scudo', level: 1, prepared: false)]);
+      // Caller passes prepared: true on a spell that is actually unprepared —
+      // editing must not be a back door into preparing it.
+      unpreparedCase.updateSpell(0, Spell(name: 'Scudo', level: 1, prepared: true));
+      expect(unpreparedCase.spells[0].prepared, isFalse);
+    });
+
+    test('an edit whose level is zero clears the prepared flag', () {
+      final c = withSpells([Spell(name: 'Dardo Incantato', level: 1, prepared: true)]);
+
+      c.updateSpell(0, Spell(name: 'Dardo Incantato', level: 0));
+
+      expect(c.spells[0].prepared, isFalse);
+    });
+
+    test('an edit from level zero to a non-zero level leaves the spell unprepared', () {
+      // A cantrip can never legitimately be prepared through
+      // togglePreparedSpell, but updateSpell must not rely on that
+      // invariant holding upstream — so the stored flag is forced to true
+      // here directly, bypassing the toggle, to prove the model itself
+      // guards this case.
+      final c = withSpells([Spell(name: 'Luce', level: 0, prepared: true)]);
+
+      c.updateSpell(0, Spell(name: 'Luce', level: 1));
+
+      expect(c.spells[0].prepared, isFalse);
+    });
+
+    test('all ten descriptive fields are overwritten by the incoming spell', () {
+      final c = withSpells([
+        Spell(
+          name: 'Vecchio Nome',
+          level: 1,
+          school: 'Vecchia Scuola',
+          castingTime: 'Vecchio Tempo',
+          range: 'Vecchia Gittata',
+          components: 'Vecchi Componenti',
+          duration: 'Vecchia Durata',
+          description: 'Vecchia Descrizione',
+          damage: 'Vecchio Danno',
+        ),
+      ]);
+      final edited = fullSpell();
+
+      c.updateSpell(0, edited);
+
+      final s = c.spells[0];
+      expect(s.name, edited.name);
+      expect(s.level, edited.level);
+      expect(s.school, edited.school);
+      expect(s.castingTime, edited.castingTime);
+      expect(s.range, edited.range);
+      expect(s.components, edited.components);
+      expect(s.duration, edited.duration);
+      expect(s.description, edited.description);
+      expect(s.damage, edited.damage);
+    });
+
+    test('an out-of-range index changes nothing', () {
+      final c = withSpells([Spell(name: 'Scudo', level: 1, prepared: true)]);
+
+      c.updateSpell(5, Spell(name: 'Non dovrebbe applicarsi', level: 2));
+      c.updateSpell(-1, Spell(name: 'Non dovrebbe applicarsi', level: 2));
+
+      expect(c.spells.single.name, 'Scudo');
+      expect(c.spells.single.level, 1);
+      expect(c.spells.single.prepared, isTrue);
+    });
+
+    test('the prepared count and over-limit flag read correctly after an edit', () {
+      final c = withSpells([
+        Spell(name: 'Dardo Incantato', level: 1, prepared: true),
+        Spell(name: 'Scudo', level: 1, prepared: true),
+      ], limit: 1);
+      expect(c.isOverPreparedLimit, isTrue);
+
+      // Editing the first spell down to a cantrip drops it out of the
+      // prepared count entirely, which can only bring the character closer
+      // to (or under) the limit, never push it further over.
+      c.updateSpell(0, Spell(name: 'Dardo Incantato', level: 0));
+
+      expect(c.preparedSpellsCount, 1);
+      expect(c.isOverPreparedLimit, isFalse);
+    });
+
+    test('an edit round-trips through the Character map serialisation', () {
+      final c = withSpells([Spell(name: 'Scudo', level: 1, prepared: true)]);
+
+      c.updateSpell(0, fullSpell(name: 'Scudo Maggiore', level: 2, prepared: false));
+      final restored = Character.fromMap(c.toMap());
+
+      final s = restored.spells.single;
+      expect(s.name, 'Scudo Maggiore');
+      expect(s.level, 2);
+      // Carried forward from the spell that was there before the edit,
+      // not from the `prepared: false` the caller passed to fullSpell().
+      expect(s.prepared, isTrue);
+      expect(s.school, 'Invocazione');
+      expect(s.castingTime, '1 azione');
+      expect(s.range, '45 metri');
+      expect(s.components, 'V, S, M');
+      expect(s.duration, 'Istantanea');
+      expect(s.description, 'Una palla di fuoco esplode in un\'area.');
+      expect(s.damage, '8d6 fuoco');
+    });
+  });
 }

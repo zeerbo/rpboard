@@ -816,6 +816,44 @@ class Character {
     return true;
   }
 
+  /// Replaces the spell at [index] with [edited]'s ten descriptive fields,
+  /// resolving the prepared flag itself rather than trusting the caller —
+  /// this is the single write path a spell-editing dialog uses, so no
+  /// caller can set or clear preparation just by editing a spell's text.
+  ///
+  /// [edited].prepared is always ignored. The flag carried forward is the
+  /// one already on the spell at [index], with two exceptions, both driven
+  /// by level rather than by anything the caller passed:
+  ///
+  /// - an edit landing at level zero always comes out unprepared — a
+  ///   cantrip can never be prepared, and unlike [togglePreparedSpell],
+  ///   which would otherwise be the only way to clear the flag, refuses
+  ///   cantrips outright, so this is the one path that can;
+  /// - a spell that *was* a cantrip never carries a prepared flag forward,
+  ///   even if one is somehow already set on it, so raising its level back
+  ///   out of cantrip status always arrives unprepared rather than
+  ///   resurrecting a flag that should never have been there.
+  ///
+  /// An out-of-range [index] is a no-op, consistent with the neighbouring
+  /// spell-slot methods, which no-op on a level they hold no row for.
+  void updateSpell(int index, Spell edited) {
+    if (index < 0 || index >= spells.length) return;
+    final current = spells[index];
+    final carriedPrepared = current.level > 0 && current.prepared;
+    spells[index] = Spell(
+      name: edited.name,
+      level: edited.level,
+      school: edited.school,
+      prepared: edited.level > 0 && carriedPrepared,
+      castingTime: edited.castingTime,
+      range: edited.range,
+      components: edited.components,
+      duration: edited.duration,
+      description: edited.description,
+      damage: edited.damage,
+    );
+  }
+
   // ── Death saves ───────────────────────────────────────────────────────────
   //
   // Toggle-down semantics: clicking box `i` sets the count to `i` if it was
