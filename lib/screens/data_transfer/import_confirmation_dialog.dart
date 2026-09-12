@@ -18,15 +18,10 @@ import '../../core/sync/version_policy.dart';
 class ImportConfirmationDialog extends StatelessWidget {
   final int localCharacterCount;
 
-  /// Defaults to 0 rather than being required: `data_transfer_screen.dart`
-  /// (out of this ticket's file scope — see the ticket's "File scope" note)
-  /// does not yet pass this through from [DataTransferViewState], and this
-  /// default keeps that call site compiling unchanged until it does.
   final int localCampaignCount;
   final ArchiveInfo archive;
   final SchemaVersionOutcome outcome;
   final String refusalMessage;
-  final VoidCallback onConfirm;
 
   const ImportConfirmationDialog({
     super.key,
@@ -35,7 +30,6 @@ class ImportConfirmationDialog extends StatelessWidget {
     required this.archive,
     required this.outcome,
     required this.refusalMessage,
-    required this.onConfirm,
   });
 
   @override
@@ -83,10 +77,10 @@ class ImportConfirmationDialog extends StatelessWidget {
           child: const Text('Annulla'),
         ),
         ElevatedButton(
-          onPressed: () {
-            Navigator.of(context).pop(true);
-            onConfirm();
-          },
+          // The popped value is the whole result: the caller reads it and
+          // decides. A second confirmation channel next to it would be one
+          // more thing to keep in step for no gain.
+          onPressed: () => Navigator.of(context).pop(true),
           child: const Text('Importa'),
         ),
       ],

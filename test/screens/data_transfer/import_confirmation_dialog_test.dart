@@ -40,29 +40,43 @@ void main() {
     );
   }
 
-  Future<void> pump(
+  /// Opens the dialog with `showDialog`, the way the screen opens it, and
+  /// collects what it pops. That popped value is what the screen acts on, so
+  /// a test asserting on it is asserting the dialog's real contract rather
+  /// than a callback only tests pass.
+  Future<List<bool?>> pump(
     WidgetTester tester, {
     required int localCharacterCount,
     int localCampaignCount = 0,
     required ArchiveInfo archive,
     SchemaVersionOutcome outcome = SchemaVersionOutcome.accepted,
     String refusalMessage = '',
-    VoidCallback? onConfirm,
-  }) {
-    return tester.pumpWidget(
+  }) async {
+    final popped = <bool?>[];
+    await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ImportConfirmationDialog(
-            localCharacterCount: localCharacterCount,
-            localCampaignCount: localCampaignCount,
-            archive: archive,
-            outcome: outcome,
-            refusalMessage: refusalMessage,
-            onConfirm: onConfirm ?? () {},
+          body: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () async => popped.add(await showDialog<bool>(
+                context: context,
+                builder: (_) => ImportConfirmationDialog(
+                  localCharacterCount: localCharacterCount,
+                  localCampaignCount: localCampaignCount,
+                  archive: archive,
+                  outcome: outcome,
+                  refusalMessage: refusalMessage,
+                ),
+              )),
+              child: const Text('Apri'),
+            ),
           ),
         ),
       ),
     );
+    await tester.tap(find.text('Apri'));
+    await tester.pumpAndSettle();
+    return popped;
   }
 
   testWidgets('shows the local and archive Character counts', (tester) async {
@@ -103,44 +117,32 @@ void main() {
     expect(find.textContaining('sostituirà'), findsOneWidget);
   });
 
-  testWidgets('cancelling calls no confirmation callback', (tester) async {
+  testWidgets('cancelling refuses the import', (tester) async {
     final archive = archiveWith(
       characterCount: 1,
       exportedAt: DateTime(2026, 1, 1),
       deviceLabel: 'x',
     );
-    var confirmed = false;
 
-    await pump(
-      tester,
-      localCharacterCount: 0,
-      archive: archive,
-      onConfirm: () => confirmed = true,
-    );
+    final popped = await pump(tester, localCharacterCount: 0, archive: archive);
     await tester.tap(find.text('Annulla'));
     await tester.pumpAndSettle();
 
-    expect(confirmed, isFalse);
+    expect(popped, [false]);
   });
 
-  testWidgets('confirming calls the confirmation callback exactly once', (tester) async {
+  testWidgets('confirming confirms the import exactly once', (tester) async {
     final archive = archiveWith(
       characterCount: 1,
       exportedAt: DateTime(2026, 1, 1),
       deviceLabel: 'x',
     );
-    var confirmCount = 0;
 
-    await pump(
-      tester,
-      localCharacterCount: 0,
-      archive: archive,
-      onConfirm: () => confirmCount++,
-    );
+    final popped = await pump(tester, localCharacterCount: 0, archive: archive);
     await tester.tap(find.text('Importa'));
     await tester.pumpAndSettle();
 
-    expect(confirmCount, 1);
+    expect(popped, [true]);
   });
 
   testWidgets(

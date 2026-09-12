@@ -119,7 +119,6 @@ class DataTransferScreen extends ConsumerWidget {
         archive: archive,
         outcome: outcome,
         refusalMessage: refusalMessage,
-        onConfirm: () {},
       ),
     );
 

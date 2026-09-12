@@ -141,12 +141,7 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     final db = ref.read(databaseProvider);
     await db.backupDatabase();
     await db.importSnapshot(archive.envelope.snapshot);
-    ref.invalidateSelf();
-    ref.invalidate(characterListProvider);
-    ref.invalidate(campaignListProvider);
-    ref.invalidate(chapterListProvider);
-    ref.invalidate(screenListProvider);
-    ref.invalidate(componentListProvider);
+    _refreshEverything();
   }
 
   /// Restores [backup] over the current database, then refreshes both this
@@ -161,6 +156,14 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
   Future<void> restoreBackup(DatabaseBackupInfo backup) async {
     final db = ref.read(databaseProvider);
     await db.restoreBackup(backup);
+    _refreshEverything();
+  }
+
+  /// Both write paths here — an import and a restore — replace every
+  /// aggregate the user owns at once, so both refresh this screen and every
+  /// list reading from the database. Kept in one place because a new
+  /// aggregate's list provider must be added for both or neither.
+  void _refreshEverything() {
     ref.invalidateSelf();
     ref.invalidate(characterListProvider);
     ref.invalidate(campaignListProvider);
