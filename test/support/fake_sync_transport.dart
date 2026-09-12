@@ -60,4 +60,14 @@ class FakeSyncTransport implements SyncTransport {
 
   @override
   String deviceLabel() => deviceLabelValue;
+
+  /// Tracks whether [openExchangeFolder] was called, so a widget test can
+  /// assert the screen's control reaches the transport seam without any
+  /// real platform I/O.
+  bool openExchangeFolderCalled = false;
+
+  @override
+  Future<void> openExchangeFolder() async {
+    openExchangeFolderCalled = true;
+  }
 }

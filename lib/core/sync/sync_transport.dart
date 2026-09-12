@@ -51,6 +51,14 @@ abstract interface class SyncTransport {
   /// the same `kIsWeb` guard `SqfliteDatabase` already applies before its
   /// own platform-specific initialisation.
   String deviceLabel();
+
+  /// Opens the exchange folder in the platform's file manager (Explorer,
+  /// Finder, the desktop environment's file manager), so moving the
+  /// exported file to another machine is a click plus a drag rather than
+  /// typing the path shown on the screen. Platform I/O, so — like every
+  /// other piece of platform I/O this feature needs — it lives behind this
+  /// seam rather than being called inline from the screen.
+  Future<void> openExchangeFolder();
 }
 
 /// The single adapter behind [SyncTransport]: a conventional folder inside
@@ -139,5 +147,27 @@ class FolderSyncTransport implements SyncTransport {
     } catch (_) {
       return 'sconosciuto';
     }
+  }
+
+  /// No file-picker dependency was needed for the folder itself (see the
+  /// PRD and ADR-0007's "file-picker dependency" rejection), and none is
+  /// needed here either: every desktop platform this app targets already
+  /// ships a command that hands a folder to its file manager, reachable
+  /// through `dart:io`'s [Process] with no new pub dependency. There is no
+  /// equivalent concept on the web target, where this is a no-op.
+  @override
+  Future<void> openExchangeFolder() async {
+    if (kIsWeb) return;
+    final path = await exchangeFolderPath();
+    if (Platform.isWindows) {
+      await Process.run('explorer', [path]);
+    } else if (Platform.isMacOS) {
+      await Process.run('open', [path]);
+    } else if (Platform.isLinux) {
+      await Process.run('xdg-open', [path]);
+    }
+    // `explorer.exe` in particular is known to report a non-zero exit code
+    // even when it opens the folder successfully, so the exit code is
+    // deliberately not inspected here.
   }
 }

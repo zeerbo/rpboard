@@ -34,20 +34,22 @@ class SnapshotVersionRefusedException implements Exception {
 }
 
 /// Everything the Trasferisci dati screen needs to render itself: the
-/// exchange folder's path, the archives found there, and the local
+/// exchange folder's path, the archives found there, the local
 /// Character/Campaign counts the confirmation dialog compares against an
-/// archive's.
+/// archive's, and the backups available to restore from.
 class DataTransferViewState {
   final String exchangeFolderPath;
   final List<ArchiveInfo> archives;
   final int localCharacterCount;
   final int localCampaignCount;
+  final List<DatabaseBackupInfo> backups;
 
   const DataTransferViewState({
     required this.exchangeFolderPath,
     required this.archives,
     required this.localCharacterCount,
     required this.localCampaignCount,
+    required this.backups,
   });
 }
 
@@ -65,11 +67,13 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     final archives = await transport.listArchives();
     final characters = await db.getCharacters();
     final campaigns = await db.getCampaigns();
+    final backups = await db.listBackups();
     return DataTransferViewState(
       exchangeFolderPath: folderPath,
       archives: archives,
       localCharacterCount: characters.length,
       localCampaignCount: campaigns.length,
+      backups: backups,
     );
   }
 
@@ -117,6 +121,12 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
   /// content, atomically, through the `Database` seam. Throws
   /// [SnapshotVersionRefusedException] without touching the database at all
   /// when the version policy refuses the archive.
+  ///
+  /// Before any row is touched, the current database is backed up
+  /// (PRD, ticket 04: "the app takes a backup of the destination's database
+  /// before it touches anything"). If the backup itself cannot be written,
+  /// the exception propagates and the import never runs — a failed backup
+  /// aborts the import rather than proceeding unprotected.
   Future<void> importArchive(ArchiveInfo archive) async {
     final outcome = evaluateVersion(archive);
     if (outcome != SchemaVersionOutcome.accepted) {
@@ -124,6 +134,7 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     }
 
     final db = ref.read(databaseProvider);
+    await db.backupDatabase();
     await db.importSnapshot(archive.envelope.snapshot);
     ref.invalidateSelf();
     ref.invalidate(characterListProvider);
@@ -132,6 +143,32 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     ref.invalidate(screenListProvider);
     ref.invalidate(componentListProvider);
   }
+
+  /// Restores [backup] over the current database, then refreshes both this
+  /// screen's state and every aggregate's list so the restored state is
+  /// visible immediately — no app restart needed. A restore puts back the
+  /// whole database file, so Campaign material is refreshed alongside the
+  /// Character roster, exactly as an import refreshes it.
+  ///
+  /// Restore is only ever called from an explicit user action with its own
+  /// confirmation; it is never triggered automatically, including on an
+  /// import failure.
+  Future<void> restoreBackup(DatabaseBackupInfo backup) async {
+    final db = ref.read(databaseProvider);
+    await db.restoreBackup(backup);
+    ref.invalidateSelf();
+    ref.invalidate(characterListProvider);
+    ref.invalidate(campaignListProvider);
+    ref.invalidate(chapterListProvider);
+    ref.invalidate(screenListProvider);
+    ref.invalidate(componentListProvider);
+  }
+
+  /// Opens the exchange folder in the platform's file manager. Platform
+  /// I/O, so this is a thin passthrough to the transport seam rather than
+  /// something the screen reaches for directly.
+  Future<void> openExchangeFolder() =>
+      ref.read(syncTransportProvider).openExchangeFolder();
 }
 
 final dataTransferProvider =

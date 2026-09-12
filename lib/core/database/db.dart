@@ -82,6 +82,47 @@ abstract interface class Database {
   /// content survives an import, including any Campaign-material orphan rows
   /// [exportSnapshot] never carried over.
   Future<void> importSnapshot(AppSnapshot snapshot);
+
+  // ─── Backup & restore (safety net around import) ────────────────────────────
+  //
+  // See the data-transfer PRD ("Backups are byte copies of the database
+  // file") and ticket 04. Reading the database file's own location stays
+  // inside the adapter by design (ADR-0002), so these three capabilities —
+  // taking a backup, pruning old ones, and restoring one — sit at the same
+  // level as the database itself rather than above it: a caller never sees
+  // a path, only a [DatabaseBackupInfo].
+
+  /// Copies the current database file, byte for byte — not a logical
+  /// export — into a `backups/` folder next to it, named with an ISO-8601
+  /// timestamp, then removes any backup beyond the 5 most recent. A byte
+  /// copy is deliberate: the backup's whole purpose is to cover the case
+  /// where the logical export (`AppSnapshot`/`SnapshotCodec`) lost
+  /// something, so it must not share that mechanism.
+  Future<DatabaseBackupInfo> backupDatabase();
+
+  /// Every backup this adapter can see, most recent first.
+  Future<List<DatabaseBackupInfo>> listBackups();
+
+  /// Overwrites the live database file with [backup]'s bytes, byte for
+  /// byte, then reopens the connection so the restored state is visible on
+  /// the very next read — no app restart required. An explicit user action
+  /// only: never called automatically on an import failure, since a
+  /// rollback triggered by a misread error can destroy more than it saves.
+  ///
+  /// Restoring a backup taken under an older schema simply reopens an
+  /// older schema, which the migration ladder already carries forward on
+  /// open (ADR-0005): a restore is therefore never a downgrade.
+  Future<void> restoreBackup(DatabaseBackupInfo backup);
+}
+
+/// One backup of the database file: a byte-for-byte copy kept in a
+/// `backups/` folder next to the database, named with an ISO-8601
+/// timestamp. See [Database.backupDatabase].
+class DatabaseBackupInfo {
+  final String path;
+  final DateTime createdAt;
+
+  const DatabaseBackupInfo({required this.path, required this.createdAt});
 }
 
 /// The published seam. Default builds the real on-device SQLite store; tests
@@ -231,12 +272,134 @@ Future<void> importSnapshotInto(sql.Database db, AppSnapshot snapshot) async {
   });
 }
 
+/// Only the 5 most recent backups are kept (PRD, ticket 04).
+const _maxBackups = 5;
+
+/// The fixed prefix every backup file name carries, and the counterpart to
+/// [_parseBackupTimestamp] below.
+const _backupFilePrefix = 'rpboard-backup-';
+
+/// Filesystem-safe stand-in for a raw ISO-8601 string: Windows (the
+/// collaudo target) refuses `:` in a file name. Mirrors
+/// `FolderSyncTransport._sanitizedTimestamp`.
+String _sanitizedBackupTimestamp(DateTime t) =>
+    t.toUtc().toIso8601String().replaceAll(':', '-');
+
+/// The inverse of [_sanitizedBackupTimestamp], read back out of a backup
+/// file's name so [listDatabaseBackups] can report when a backup was taken
+/// without depending on filesystem metadata. Tolerant of the numeric
+/// `-<n>` suffix [backupDatabaseFile] appends to avoid a same-millisecond
+/// collision: the pattern only anchors the start of the name.
+final _backupNamePattern =
+    RegExp(r'^rpboard-backup-(\d{4}-\d{2}-\d{2})T(\d{2})-(\d{2})-(\d{2})(\.\d+)?Z');
+
+DateTime? _parseBackupTimestamp(String fileName) {
+  final base = p.basenameWithoutExtension(fileName);
+  final match = _backupNamePattern.firstMatch(base);
+  if (match == null) return null;
+  final fraction = match.group(5) ?? '';
+  return DateTime.tryParse(
+      '${match.group(1)}T${match.group(2)}:${match.group(3)}:${match.group(4)}$fraction' 'Z');
+}
+
+Future<DateTime> _backupCreatedAt(File file) async =>
+    _parseBackupTimestamp(file.path) ?? await file.lastModified();
+
+/// The `backups/` folder next to the database at [dbPath] — a sibling of
+/// the database file, exactly like `FolderSyncTransport`'s `transfer/`
+/// folder is a sibling of the database (PRD "Backups... kept in their own
+/// folder next to the database").
+Directory _backupsFolder(String dbPath) =>
+    Directory(p.join(p.dirname(dbPath), 'backups'));
+
+/// Copies the database file at [dbPath], byte for byte, into its
+/// `backups/` folder, named `rpboard-backup-<ISO8601>.db`, then prunes
+/// anything beyond the [_maxBackups] most recent. A plain [File.copy] — not
+/// a logical export — deliberately, per the PRD.
+///
+/// Pulled out to a top-level function — like [openAppDatabase] and
+/// [importSnapshotInto] — so a test can exercise it against a real
+/// temporary directory with no [SqfliteDatabase] and no `path_provider`
+/// involved at all. [at] lets a test fix the backup's timestamp instead of
+/// depending on wall-clock ordering between successive calls; production
+/// never passes it, so it defaults to the real current time.
+Future<DatabaseBackupInfo> backupDatabaseFile(String dbPath, {DateTime? at}) async {
+  final now = at ?? DateTime.now();
+  final backupsDir = _backupsFolder(dbPath);
+  await backupsDir.create(recursive: true);
+
+  final base = '$_backupFilePrefix${_sanitizedBackupTimestamp(now)}';
+  var backupFile = File(p.join(backupsDir.path, '$base.db'));
+  var suffix = 1;
+  while (await backupFile.exists()) {
+    backupFile = File(p.join(backupsDir.path, '$base-$suffix.db'));
+    suffix++;
+  }
+  await File(dbPath).copy(backupFile.path);
+
+  await _pruneOldBackups(backupsDir);
+
+  return DatabaseBackupInfo(path: backupFile.path, createdAt: now);
+}
+
+/// Deletes every backup in [backupsDir] beyond the [_maxBackups] most
+/// recent, oldest first.
+Future<void> _pruneOldBackups(Directory backupsDir) async {
+  final files = await backupsDir
+      .list()
+      .where((e) => e is File && p.extension(e.path) == '.db')
+      .cast<File>()
+      .toList();
+  if (files.length <= _maxBackups) return;
+
+  final withTimes = await Future.wait(
+      files.map((f) async => MapEntry(f, await _backupCreatedAt(f))));
+  withTimes.sort((a, b) => a.value.compareTo(b.value));
+
+  for (final entry in withTimes.take(withTimes.length - _maxBackups)) {
+    await entry.key.delete();
+  }
+}
+
+/// Every backup next to the database at [dbPath], most recent first.
+/// Returns empty when the `backups/` folder doesn't exist yet — a fresh
+/// install that has never imported anything.
+Future<List<DatabaseBackupInfo>> listDatabaseBackups(String dbPath) async {
+  final backupsDir = _backupsFolder(dbPath);
+  if (!await backupsDir.exists()) return [];
+
+  final infos = <DatabaseBackupInfo>[];
+  await for (final entity in backupsDir.list()) {
+    if (entity is! File || p.extension(entity.path) != '.db') continue;
+    infos.add(DatabaseBackupInfo(
+        path: entity.path, createdAt: await _backupCreatedAt(entity)));
+  }
+  infos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  return infos;
+}
+
+/// Overwrites the database file at [dbPath] with [backupPath]'s bytes, byte
+/// for byte — the inverse of [backupDatabaseFile]. Plain [File.copy]:
+/// restoring is a filesystem operation, not a logical import, so it never
+/// goes through [importSnapshotInto] or touches `AppSnapshot` at all.
+Future<void> restoreDatabaseBackup(String dbPath, String backupPath) =>
+    File(backupPath).copy(dbPath).then((_) {});
+
 /// The real SQLite adapter. Lazy-open, ffi init, and path resolution are all
 /// private here; sqflite's own [sql.Database] type never leaves this file.
 class SqfliteDatabase implements Database {
   sql.Database? _db;
 
   Future<sql.Database> get _conn async => _db ??= await _open();
+
+  /// Where this installation's database file lives. Resolved through
+  /// `path_provider`, so it stays a `Future`-returning method rather than a
+  /// cached field — mirrors [_open] itself, which already re-derives this
+  /// same path on every fresh open.
+  Future<String> _dbPath() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return p.join(dir.path, 'rpboard', 'rpboard.db');
+  }
 
   Future<sql.Database> _open() async {
     if (!kIsWeb &&
@@ -245,8 +408,7 @@ class SqfliteDatabase implements Database {
       sql.databaseFactory = sql.databaseFactoryFfi;
     }
 
-    final dir = await getApplicationDocumentsDirectory();
-    final path = p.join(dir.path, 'rpboard', 'rpboard.db');
+    final path = await _dbPath();
     await Directory(p.dirname(path)).create(recursive: true);
 
     return openAppDatabase(path);
@@ -484,5 +646,35 @@ class SqfliteDatabase implements Database {
   Future<void> importSnapshot(AppSnapshot snapshot) async {
     final d = await _conn;
     await importSnapshotInto(d, snapshot);
+  }
+
+  // ─── Backup & restore ──────────────────────────────────────────────────────
+
+  @override
+  Future<DatabaseBackupInfo> backupDatabase() async {
+    await _conn; // ensures the database file actually exists on disk
+    final path = await _dbPath();
+    return backupDatabaseFile(path);
+  }
+
+  @override
+  Future<List<DatabaseBackupInfo>> listBackups() async {
+    final path = await _dbPath();
+    return listDatabaseBackups(path);
+  }
+
+  @override
+  Future<void> restoreBackup(DatabaseBackupInfo backup) async {
+    final path = await _dbPath();
+    // The live connection holds the database file open; it must be closed
+    // before the file underneath it can be overwritten. The next caller to
+    // touch this adapter re-opens it lazily through [_conn], now against
+    // the restored bytes — which is what makes the restored state visible
+    // without the user restarting the app.
+    if (_db != null) {
+      await _db!.close();
+      _db = null;
+    }
+    await restoreDatabaseBackup(path, backup.path);
   }
 }

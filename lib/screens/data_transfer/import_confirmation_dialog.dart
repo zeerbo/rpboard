@@ -31,7 +31,7 @@ class ImportConfirmationDialog extends StatelessWidget {
   const ImportConfirmationDialog({
     super.key,
     required this.localCharacterCount,
-    this.localCampaignCount = 0,
+    required this.localCampaignCount,
     required this.archive,
     required this.outcome,
     required this.refusalMessage,
