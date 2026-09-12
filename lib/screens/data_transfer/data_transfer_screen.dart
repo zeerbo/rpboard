@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../../core/database/db.dart';
 import '../../core/sync/sync_transport.dart';
@@ -20,6 +21,13 @@ import 'import_confirmation_dialog.dart';
 /// this installation's) is marked in the list itself — a warning icon and
 /// its refusal message in place of the device label — so the user sees why
 /// it can't be used before tapping it, not only after (ticket 05).
+///
+/// A file in the exchange folder `SnapshotCodec` could not decode at all
+/// (not JSON, JSON but not an archive, an unreadable or mismatched version
+/// field, a truncated payload) is rendered the same way, as its own
+/// non-tappable tile carrying the codec's own message — never as a usable
+/// archive, and never with the import affordance a usable archive gets
+/// (ticket 05).
 class DataTransferScreen extends ConsumerWidget {
   const DataTransferScreen({super.key});
 
@@ -169,12 +177,27 @@ class DataTransferScreen extends ConsumerWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
             const SizedBox(height: 8),
-            if (state.archives.isEmpty)
+            if (state.archives.isEmpty && state.refusedArchives.isEmpty)
               const Text(
                 'Nessun archivio trovato in questa cartella.',
                 style: TextStyle(color: AppTheme.onSurfaceMuted),
               )
-            else
+            else ...[
+              // A file this codec could not decode is rendered as its own,
+              // non-tappable tile — a refused file must never gain the
+              // import affordance a usable archive gets (ticket 05).
+              ...state.refusedArchives.map(
+                (refused) => Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.error_outline, color: AppTheme.warning),
+                    title: Text(p.basename(refused.path)),
+                    subtitle: Text(
+                      refused.reason,
+                      style: const TextStyle(color: AppTheme.warning),
+                    ),
+                  ),
+                ),
+              ),
               ...state.archives.map((archive) {
                 // A refused archive must be visibly distinguishable in this
                 // list, before the user selects it — not only after they
@@ -207,6 +230,7 @@ class DataTransferScreen extends ConsumerWidget {
                   ),
                 );
               }),
+            ],
             const SizedBox(height: 24),
             Text(
               'Backup',

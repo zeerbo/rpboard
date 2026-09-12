@@ -35,18 +35,28 @@ class FakeSyncTransport implements SyncTransport {
     return path;
   }
 
+  /// Drops a raw, not-necessarily-decodable file into the folder under
+  /// [name], for a test that needs a specific filename or content
+  /// `writeArchive` (which always encodes a valid envelope) can't produce —
+  /// e.g. a damaged file [listArchives] must refuse rather than list.
+  void writeRawFile(String name, String contents) {
+    files['$folderPath/$name'] = contents;
+  }
+
   @override
-  Future<List<ArchiveInfo>> listArchives() async {
-    final infos = <ArchiveInfo>[];
+  Future<ArchiveListing> listArchives() async {
+    final archives = <ArchiveInfo>[];
+    final refused = <RefusedArchiveInfo>[];
     for (final entry in files.entries) {
       try {
-        infos.add(ArchiveInfo(path: entry.key, envelope: codec.decode(entry.value)));
-      } catch (_) {
-        continue;
+        archives.add(ArchiveInfo(path: entry.key, envelope: codec.decode(entry.value)));
+      } on SnapshotFormatException catch (e) {
+        refused.add(RefusedArchiveInfo(path: entry.key, reason: e.message));
       }
     }
-    infos.sort((a, b) => b.envelope.exportedAt.compareTo(a.envelope.exportedAt));
-    return infos;
+    archives.sort((a, b) => b.envelope.exportedAt.compareTo(a.envelope.exportedAt));
+    refused.sort((a, b) => a.path.compareTo(b.path));
+    return ArchiveListing(archives: archives, refused: refused);
   }
 
   @override

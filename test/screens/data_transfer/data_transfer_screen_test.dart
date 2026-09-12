@@ -104,6 +104,51 @@ void main() {
     expect(find.textContaining('Da: OTHER-PC'), findsOneWidget);
   });
 
+  testWidgets(
+      'a file the codec could not decode is rendered as a refused entry '
+      'with its reason, and offers no import affordance', (tester) async {
+    transport.writeRawFile('damaged.json', 'not json at all {{{');
+    await pumpScreen(tester);
+
+    // The refused tile is visible with a readable reason...
+    expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    expect(find.textContaining('damaged.json'), findsOneWidget);
+    expect(find.text('Importa'), findsNothing);
+
+    // ...and tapping it does nothing: no confirmation dialog opens.
+    await tester.tap(find.byIcon(Icons.error_outline));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Importa'), findsNothing);
+    expect(find.byType(AlertDialog), findsNothing);
+  });
+
+  testWidgets(
+      'a refused entry is listed alongside a usable archive without '
+      'affecting the usable one', (tester) async {
+    transport.writeRawFile('damaged.json', 'not json at all {{{');
+    final exporterDb = InMemoryDatabase();
+    await exporterDb.insertCharacter(Character(id: 'x', name: 'From archive'));
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: await exporterDb.exportSnapshot(),
+      schemaVersion: const Migrations().latestVersion,
+      appVersion: '1.0.0+1',
+      exportedAt: DateTime.utc(2026, 1, 1),
+      deviceLabel: 'OTHER-PC',
+    ));
+
+    await pumpScreen(tester);
+
+    expect(find.byIcon(Icons.error_outline), findsOneWidget);
+    expect(find.textContaining('Da: OTHER-PC'), findsOneWidget);
+
+    // The usable archive still opens its confirmation on tap.
+    await tester.tap(find.textContaining('Da: OTHER-PC'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Importa'), findsOneWidget);
+  });
+
   testWidgets('tapping an archive opens the import confirmation', (tester) async {
     final exporterDb = InMemoryDatabase();
     await exporterDb.insertCharacter(Character(id: 'x', name: 'From archive'));

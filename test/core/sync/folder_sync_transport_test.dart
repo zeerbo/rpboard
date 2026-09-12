@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -56,9 +57,10 @@ void main() {
 
   test('listArchives on a fresh install with no exchange folder returns '
       'empty rather than throwing', () async {
-    final archives = await transport.listArchives();
+    final listing = await transport.listArchives();
 
-    expect(archives, isEmpty);
+    expect(listing.archives, isEmpty);
+    expect(listing.refused, isEmpty);
   });
 
   test('write then read back reproduces the exact archive contents', () async {
@@ -93,26 +95,39 @@ void main() {
       encodeArchive(exportedAt: DateTime.utc(2026, 3, 1), deviceLabel: 'MIDDLE'),
     );
 
-    final archives = await transport.listArchives();
+    final listing = await transport.listArchives();
 
-    expect(archives.map((a) => a.envelope.deviceLabel), ['NEWEST', 'MIDDLE', 'OLDEST']);
-    expect(archives.every((a) => a.envelope.schemaVersion == 4), isTrue);
+    expect(listing.archives.map((a) => a.envelope.deviceLabel), ['NEWEST', 'MIDDLE', 'OLDEST']);
+    expect(listing.archives.every((a) => a.envelope.schemaVersion == 4), isTrue);
   });
 
-  test('a non-archive file in the folder is skipped, not surfaced as an '
-      'archive', () async {
+  // A file this codec cannot decode must not become an ArchiveInfo — the
+  // pre-existing test below still asserts exactly that — but ticket 05
+  // additionally requires it not be dropped silently: it must come back as
+  // its own RefusedArchiveInfo, carrying a readable reason, so the screen
+  // can explain the refusal before the user selects anything.
+  test('a non-archive file in the folder is not surfaced as an archive, but '
+      'is reported as a refused entry with a readable reason', () async {
     final folder = Directory(await transport.exchangeFolderPath());
     await File(p.join(folder.path, 'not-an-archive.json')).writeAsString('not json');
     await File(p.join(folder.path, 'readme.txt')).writeAsString('hello');
     await transport.writeArchive(encodeArchive(exportedAt: DateTime.utc(2026, 1, 1)));
 
-    final archives = await transport.listArchives();
+    final listing = await transport.listArchives();
 
-    expect(archives, hasLength(1));
+    // The good archive is the only usable one; the malformed .json file is
+    // refused with a reason, and the non-.json file is not even a
+    // candidate archive (matching the app's own '.json' export convention)
+    // so it appears in neither list.
+    expect(listing.archives, hasLength(1));
+    expect(listing.refused, hasLength(1));
+    expect(listing.refused.single.path, endsWith('not-an-archive.json'));
+    expect(listing.refused.single.reason, isNotEmpty);
   });
 
-  test('a file with a formatVersion this codec does not speak is skipped '
-      'like any other unreadable file', () async {
+  test('a file with a formatVersion this codec does not speak is reported as '
+      'a refused entry with its own message, not surfaced as an archive',
+      () async {
     final folder = Directory(await transport.exchangeFolderPath());
     await File(p.join(folder.path, 'future-format.json')).writeAsString(
       '{"formatVersion": 99, "schemaVersion": 4, "appVersion": "9.0.0", '
@@ -121,9 +136,11 @@ void main() {
     );
     await transport.writeArchive(encodeArchive(exportedAt: DateTime.utc(2026, 1, 1)));
 
-    final archives = await transport.listArchives();
+    final listing = await transport.listArchives();
 
-    expect(archives, hasLength(1));
+    expect(listing.archives, hasLength(1));
+    expect(listing.refused, hasLength(1));
+    expect(listing.refused.single.reason, contains('formatVersion'));
   });
 
   test('an archive with a higher schemaVersion than this codec\'s own is '
@@ -138,13 +155,133 @@ void main() {
       deviceLabel: 'FUTURE-PC',
     ));
 
-    final archives = await transport.listArchives();
+    final listing = await transport.listArchives();
 
-    expect(archives, hasLength(2));
-    expect(archives.map((a) => a.envelope.schemaVersion), [999, 4]);
+    expect(listing.archives, hasLength(2));
+    expect(listing.archives.map((a) => a.envelope.schemaVersion), [999, 4]);
+    expect(listing.refused, isEmpty);
   });
 
   test('deviceLabel returns a non-empty string', () {
     expect(transport.deviceLabel(), isNotEmpty);
+  });
+
+  group('format-level refusals (ticket 05)', () {
+    Future<void> writeRaw(Directory folder, String name, String contents) =>
+        File(p.join(folder.path, name)).writeAsString(contents);
+
+    test('a file that is not JSON at all is refused with a readable error, '
+        'never surfaced as an archive', () async {
+      final folder = Directory(await transport.exchangeFolderPath());
+      await writeRaw(folder, 'garbage.json', 'this is definitely not json {{{');
+
+      final listing = await transport.listArchives();
+
+      expect(listing.archives, isEmpty);
+      expect(listing.refused, hasLength(1));
+      expect(listing.refused.single.reason, isNotEmpty);
+    });
+
+    test('a file that is valid JSON but not an RPBoard archive is refused, '
+        'never surfaced as an archive', () async {
+      final folder = Directory(await transport.exchangeFolderPath());
+      await writeRaw(folder, 'not-an-envelope.json', '["just", "an", "array"]');
+
+      final listing = await transport.listArchives();
+
+      expect(listing.archives, isEmpty);
+      expect(listing.refused, hasLength(1));
+      expect(listing.refused.single.reason, isNotEmpty);
+    });
+
+    test('an archive with a missing version field is refused, never '
+        'surfaced as an archive', () async {
+      final folder = Directory(await transport.exchangeFolderPath());
+      await writeRaw(folder, 'missing-version.json', jsonEncode({
+        'schemaVersion': 4,
+        'appVersion': '1.0.0',
+        'exportedAt': '2026-01-01T00:00:00.000Z',
+        'deviceLabel': 'x',
+        'payload': {'characters': []},
+      }));
+
+      final listing = await transport.listArchives();
+
+      expect(listing.archives, isEmpty);
+      expect(listing.refused, hasLength(1));
+      expect(listing.refused.single.reason, contains('formatVersion'));
+    });
+
+    test('an archive with a non-numeric version field is refused, never '
+        'surfaced as an archive', () async {
+      final folder = Directory(await transport.exchangeFolderPath());
+      await writeRaw(folder, 'non-numeric-version.json', jsonEncode({
+        'formatVersion': 'uno',
+        'schemaVersion': 4,
+        'appVersion': '1.0.0',
+        'exportedAt': '2026-01-01T00:00:00.000Z',
+        'deviceLabel': 'x',
+        'payload': {'characters': []},
+      }));
+
+      final listing = await transport.listArchives();
+
+      expect(listing.archives, isEmpty);
+      expect(listing.refused, hasLength(1));
+      expect(listing.refused.single.reason, contains('formatVersion'));
+    });
+
+    test('a truncated archive is refused, never surfaced as an archive',
+        () async {
+      final folder = Directory(await transport.exchangeFolderPath());
+      final wholeArchive = encodeArchive(exportedAt: DateTime.utc(2026, 1, 1));
+      await writeRaw(
+        folder,
+        'truncated.json',
+        wholeArchive.substring(0, wholeArchive.length ~/ 2),
+      );
+
+      final listing = await transport.listArchives();
+
+      expect(listing.archives, isEmpty);
+      expect(listing.refused, hasLength(1));
+      expect(listing.refused.single.reason, isNotEmpty);
+    });
+
+    test('an archive with a mismatched formatVersion is refused with its '
+        'own message, never surfaced as an archive', () async {
+      final folder = Directory(await transport.exchangeFolderPath());
+      await writeRaw(folder, 'future-format-2.json', jsonEncode({
+        'formatVersion': SnapshotCodec.formatVersion + 1,
+        'schemaVersion': 4,
+        'appVersion': '9.0.0',
+        'exportedAt': '2026-01-01T00:00:00.000Z',
+        'deviceLabel': 'x',
+        'payload': {'characters': []},
+      }));
+
+      final listing = await transport.listArchives();
+
+      expect(listing.archives, isEmpty);
+      expect(listing.refused, hasLength(1));
+      expect(listing.refused.single.reason, contains('formatVersion'));
+    });
+
+    test('a folder holding both a good archive and a damaged file reports '
+        'the good one as usable and the damaged one as refused', () async {
+      final folder = Directory(await transport.exchangeFolderPath());
+      await writeRaw(folder, 'damaged.json', 'not json at all {{{');
+      final goodPath = await transport.writeArchive(
+        encodeArchive(exportedAt: DateTime.utc(2026, 1, 1), deviceLabel: 'GOOD-PC'),
+      );
+
+      final listing = await transport.listArchives();
+
+      expect(listing.archives, hasLength(1));
+      expect(listing.archives.single.path, goodPath);
+      expect(listing.archives.single.envelope.deviceLabel, 'GOOD-PC');
+      expect(listing.refused, hasLength(1));
+      expect(listing.refused.single.path, endsWith('damaged.json'));
+    });
   });
 }

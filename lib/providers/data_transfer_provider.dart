@@ -34,12 +34,15 @@ class SnapshotVersionRefusedException implements Exception {
 }
 
 /// Everything the Trasferisci dati screen needs to render itself: the
-/// exchange folder's path, the archives found there, the local
-/// Character/Campaign counts the confirmation dialog compares against an
-/// archive's, and the backups available to restore from.
+/// exchange folder's path, the archives found there, the files in that
+/// folder [SnapshotCodec] could not decode (each carrying its own reason,
+/// per ticket 05), the local Character/Campaign counts the confirmation
+/// dialog compares against an archive's, and the backups available to
+/// restore from.
 class DataTransferViewState {
   final String exchangeFolderPath;
   final List<ArchiveInfo> archives;
+  final List<RefusedArchiveInfo> refusedArchives;
   final int localCharacterCount;
   final int localCampaignCount;
   final List<DatabaseBackupInfo> backups;
@@ -47,6 +50,7 @@ class DataTransferViewState {
   const DataTransferViewState({
     required this.exchangeFolderPath,
     required this.archives,
+    required this.refusedArchives,
     required this.localCharacterCount,
     required this.localCampaignCount,
     required this.backups,
@@ -64,13 +68,14 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     final transport = ref.read(syncTransportProvider);
     final db = ref.read(databaseProvider);
     final folderPath = await transport.exchangeFolderPath();
-    final archives = await transport.listArchives();
+    final listing = await transport.listArchives();
     final characters = await db.getCharacters();
     final campaigns = await db.getCampaigns();
     final backups = await db.listBackups();
     return DataTransferViewState(
       exchangeFolderPath: folderPath,
-      archives: archives,
+      archives: listing.archives,
+      refusedArchives: listing.refused,
       localCharacterCount: characters.length,
       localCampaignCount: campaigns.length,
       backups: backups,

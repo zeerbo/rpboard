@@ -37,6 +37,12 @@ in either direction, with its own message distinct from a `schemaVersion` refusa
 that has only ever spoken one shape cannot assume it can parse another. An archive the version
 policy would refuse is also marked in the Trasferisci dati screen's archive list itself — not only
 in the confirmation the user reaches by tapping it — so the reason is visible before it is selected.
+A file `SnapshotCodec.decode` cannot parse at all — not JSON, JSON but not an envelope, a missing
+or unreadable version field, a `formatVersion` mismatch, a truncated payload — never reaches that
+policy and never becomes an `ArchiveInfo`; `FolderSyncTransport.listArchives` reports it instead as
+a `RefusedArchiveInfo`, carrying the codec's own message, and the screen renders it as its own
+non-tappable entry alongside the archives, so a damaged file is explained rather than silently
+absent from the list.
 
 ## Considered Options
 
@@ -133,6 +139,17 @@ in the confirmation the user reaches by tapping it — so the reason is visible 
   rather than being pre-empted here. The same ticket also added the `formatVersion` check
   `SnapshotCodec.decode` had never performed (it read the field's presence and type but never
   compared its value), and the archive-list warning in the Trasferisci dati screen.
+- **A file the codec cannot decode at all is a different kind of thing from an archive the version
+  policy refuses, and the type system says so.** `FolderSyncTransport.listArchives` used to catch
+  every decode failure and silently drop the file (`catch (_) { continue; }`), on the theory that
+  the failure would be surfaced later, at import time — it never was, so a damaged or unrelated
+  file in the exchange folder produced an empty list with no explanation. Ticket 05 closes this by
+  adding `RefusedArchiveInfo` (a filename plus the codec's own message) and returning both lists
+  together as `ArchiveListing`. An undecodable file is never wrapped as an `ArchiveInfo` — the two
+  types stay distinct exactly so a refused file can't be mistaken for one the user can import — and
+  the pre-existing `folder_sync_transport_test.dart` case asserting that a non-archive file is "not
+  surfaced as an archive" still holds under the new return shape, now alongside an explicit
+  assertion that the same file appears in `refused`.
 - **What makes this reusable on a new platform is the layering, not any single choice.** The
   format (`SnapshotCodec`) and the database work (`Database.exportSnapshot`/`importSnapshot`) are
   platform-agnostic or adapter-local; only `SyncTransport` touches platform I/O, and only it needs

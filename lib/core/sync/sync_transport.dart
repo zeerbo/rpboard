@@ -16,6 +16,34 @@ class ArchiveInfo {
   const ArchiveInfo({required this.path, required this.envelope});
 }
 
+/// One file a [SyncTransport] found in the exchange folder that
+/// [SnapshotCodec] could not decode: not JSON, JSON but not an RPBoard
+/// archive, a missing/non-numeric version field, a `formatVersion` this
+/// codec does not speak, or a truncated payload. Deliberately **not** an
+/// [ArchiveInfo] — the two are kept separate in the type system so a file
+/// this transport cannot read can never be mistaken for one it can (see
+/// ticket 05 in `.scratch/data-transfer/`). Carries [reason] verbatim from
+/// [SnapshotFormatException.message] so the Trasferisci dati screen can show
+/// the codec's own explanation without re-deriving it.
+class RefusedArchiveInfo {
+  final String path;
+  final String reason;
+
+  const RefusedArchiveInfo({required this.path, required this.reason});
+}
+
+/// Everything [SyncTransport.listArchives] finds in the exchange folder,
+/// split into the archives usable for import and the files refused because
+/// [SnapshotCodec] could not decode them. Kept as two separate lists rather
+/// than one mixed list precisely so a refused file can never be handed
+/// somewhere an [ArchiveInfo] is expected.
+class ArchiveListing {
+  final List<ArchiveInfo> archives;
+  final List<RefusedArchiveInfo> refused;
+
+  const ArchiveListing({required this.archives, required this.refused});
+}
+
 /// The only layer that touches platform I/O for data transfer (PRD
 /// "Layering"): [SnapshotCodec] above handles format with no I/O, and the
 /// `Database` seam below handles state. Exactly one adapter exists today —
@@ -34,12 +62,14 @@ abstract interface class SyncTransport {
   /// written to.
   Future<String> writeArchive(String contents);
 
-  /// Every archive this transport can see, each with its envelope already
-  /// parsed, in a deterministic order (most recently exported first). An
-  /// archive file that fails to parse is skipped rather than surfaced —
-  /// [readArchive] plus [SnapshotCodec.decode] is where a bad file is
-  /// reported to the user, at the point they actually try to import it.
-  Future<List<ArchiveInfo>> listArchives();
+  /// Every `.json` file this transport finds in the exchange folder,
+  /// classified into usable archives (each with its envelope already
+  /// parsed, in a deterministic order — most recently exported first) and
+  /// files [SnapshotCodec] refused to decode. A refused file is never
+  /// silently dropped: it is surfaced as its own [RefusedArchiveInfo],
+  /// carrying the codec's own message, so the Trasferisci dati screen can
+  /// show the user why it cannot be used before they select it (ticket 05).
+  Future<ArchiveListing> listArchives();
 
   /// Reads one archive's raw contents back, by the path an [ArchiveInfo]
   /// this same transport returned carries.
@@ -118,21 +148,33 @@ class FolderSyncTransport implements SyncTransport {
       t.toUtc().toIso8601String().replaceAll(':', '-');
 
   @override
-  Future<List<ArchiveInfo>> listArchives() async {
+  Future<ArchiveListing> listArchives() async {
     final dir = await _folder();
     final entries = await dir.list().toList();
-    final infos = <ArchiveInfo>[];
+    final archives = <ArchiveInfo>[];
+    final refused = <RefusedArchiveInfo>[];
     for (final entity in entries) {
       if (entity is! File || p.extension(entity.path) != '.json') continue;
       try {
         final contents = await entity.readAsString();
-        infos.add(ArchiveInfo(path: entity.path, envelope: codec.decode(contents)));
-      } catch (_) {
-        continue; // Malformed/unreadable files are skipped, not surfaced here.
+        archives.add(ArchiveInfo(path: entity.path, envelope: codec.decode(contents)));
+      } on SnapshotFormatException catch (e) {
+        // Not JSON, JSON but not an archive, an unreadable version field, a
+        // formatVersion mismatch, or a truncated payload: SnapshotCodec.decode
+        // already distinguishes each of these with its own message. This is
+        // the one place that message reaches the user (ticket 05) — it must
+        // never become an ArchiveInfo, so a refused file can't be mistaken
+        // for one the user can import.
+        refused.add(RefusedArchiveInfo(path: entity.path, reason: e.message));
+      } catch (e) {
+        // Anything else (e.g. the file could not even be read) is refused
+        // the same way, with whatever the platform reports as the reason.
+        refused.add(RefusedArchiveInfo(path: entity.path, reason: e.toString()));
       }
     }
-    infos.sort((a, b) => b.envelope.exportedAt.compareTo(a.envelope.exportedAt));
-    return infos;
+    archives.sort((a, b) => b.envelope.exportedAt.compareTo(a.envelope.exportedAt));
+    refused.sort((a, b) => a.path.compareTo(b.path));
+    return ArchiveListing(archives: archives, refused: refused);
   }
 
   @override

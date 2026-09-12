@@ -45,7 +45,28 @@ void main() {
 
     expect(state.exchangeFolderPath, transport.folderPath);
     expect(state.archives, isEmpty);
+    expect(state.refusedArchives, isEmpty);
     expect(state.localCharacterCount, 1);
+  });
+
+  test('build reports a file the codec could not decode as a refused '
+      'archive, separate from the usable ones', () async {
+    transport.writeRawFile('damaged.json', 'not json at all {{{');
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: AppSnapshot(characters: [Character(id: 'a', name: 'Aragorn')]),
+      schemaVersion: const Migrations().latestVersion,
+      appVersion: '1.0.0+1',
+      exportedAt: DateTime.utc(2026, 1, 1),
+      deviceLabel: 'GOOD-PC',
+    ));
+    final container = makeContainer();
+
+    final state = await container.read(dataTransferProvider.future);
+
+    expect(state.archives, hasLength(1));
+    expect(state.archives.single.envelope.deviceLabel, 'GOOD-PC');
+    expect(state.refusedArchives, hasLength(1));
+    expect(state.refusedArchives.single.reason, isNotEmpty);
   });
 
   test('export works on a fresh install where the exchange folder does not '
