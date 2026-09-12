@@ -386,6 +386,14 @@ class Character {
   List<SpellSlot> spellSlots;
   List<Spell> spells;
 
+  /// How many non-cantrip spells may be prepared at once. Typed by the
+  /// player, never derived from class and level — the 5e formula is not
+  /// uniform across classes and [characterClass] is free text. Zero means
+  /// *no limit*, which is what keeps the rule invisible to classes that
+  /// never prepare and keeps every already-saved Character behaving as it
+  /// did before this field existed.
+  int preparedSpellsMax;
+
   // Notes
   String notes;
 
@@ -446,6 +454,7 @@ class Character {
     this.armor,
     List<EquipmentItem>? equipment,
     this.spellcastingAbility = '',
+    this.preparedSpellsMax = 0,
     List<SpellSlot>? spellSlots,
     List<Spell>? spells,
     this.notes = '',
@@ -763,6 +772,50 @@ class Character {
     if (slot.used > 0) slot.used--;
   }
 
+  // ── Prepared spells ───────────────────────────────────────────────
+  //
+  // Cantrips are always available and never consume a daily choice, so they
+  // are excluded from the count and can never be prepared — which is what
+  // the tab already did by leaving their toggle inert.
+  //
+  // Over-limit is a tolerated state, not a prevented one: lowering
+  // [preparedSpellsMax] below [preparedSpellsCount] un-prepares nothing,
+  // because there is no non-arbitrary rule for choosing which spells to
+  // discard. The player recovers by un-preparing their own choices, which is
+  // why un-preparing is never refused.
+
+  /// How many non-cantrip spells are currently prepared.
+  int get preparedSpellsCount =>
+      spells.where((s) => s.level > 0 && s.prepared).length;
+
+  /// Whether another spell may be prepared. Always true while
+  /// [preparedSpellsMax] is zero (no limit).
+  bool get canPrepareAnotherSpell =>
+      preparedSpellsMax <= 0 || preparedSpellsCount < preparedSpellsMax;
+
+  /// Whether more spells are prepared than the limit allows — reachable only
+  /// by lowering [preparedSpellsMax] after preparing, never by preparing.
+  bool get isOverPreparedLimit =>
+      preparedSpellsMax > 0 && preparedSpellsCount > preparedSpellsMax;
+
+  /// Flips the prepared flag of the spell at [index], returning whether it
+  /// was actually flipped.
+  ///
+  /// Returns false — changing nothing — when [index] is out of range, when
+  /// the spell is a cantrip, or when preparing it would pass the limit.
+  /// Un-preparing is never refused. Unlike the spell-slot methods, which
+  /// no-op silently, this reports its outcome: the caller needs it to tell
+  /// the player *why* a tap did nothing, and pre-checking the condition in
+  /// the caller instead would duplicate it in two places free to diverge.
+  bool togglePreparedSpell(int index) {
+    if (index < 0 || index >= spells.length) return false;
+    final spell = spells[index];
+    if (spell.level <= 0) return false;
+    if (!spell.prepared && !canPrepareAnotherSpell) return false;
+    spell.prepared = !spell.prepared;
+    return true;
+  }
+
   // ── Death saves ───────────────────────────────────────────────────────────
   //
   // Toggle-down semantics: clicking box `i` sets the count to `i` if it was
@@ -983,6 +1036,7 @@ class Character {
       armor: parseArmor(),
       equipment: parseEquipment(),
       spellcastingAbility: m['spellcasting_ability'] ?? '',
+      preparedSpellsMax: m['prepared_spells_max'] ?? 0,
       spellSlots: parseSpellSlots(),
       spells: parseSpells(),
       notes: m['notes'] ?? '',
@@ -1051,6 +1105,7 @@ class Character {
         'armor': armor == null ? null : jsonEncode(armor!.toJson()),
         'equipment': jsonEncode(equipment.map((e) => e.toJson()).toList()),
         'spellcasting_ability': spellcastingAbility,
+        'prepared_spells_max': preparedSpellsMax,
         'spell_slots': jsonEncode(spellSlots.map((s) => s.toJson()).toList()),
         'spells': jsonEncode(spells.map((s) => s.toJson()).toList()),
         'notes': notes,

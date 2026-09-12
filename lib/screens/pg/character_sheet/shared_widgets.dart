@@ -24,7 +24,14 @@ class SectionHeader extends StatelessWidget {
 class InfoChip extends StatelessWidget {
   final String label;
   final String value;
-  const InfoChip(this.label, this.value, {super.key});
+
+  /// Colour of the value text. Defaults to the accent colour every existing
+  /// chip already used, so adding this parameter changed nothing at the call
+  /// sites that don't pass it. Callers pass [AppTheme.danger] to flag a
+  /// derived total that is out of bounds.
+  final Color valueColor;
+
+  const InfoChip(this.label, this.value, {super.key, this.valueColor = AppTheme.accent});
 
   @override
   Widget build(BuildContext context) => Container(
@@ -36,7 +43,7 @@ class InfoChip extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Text(value, style: const TextStyle(color: AppTheme.accent, fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(value, style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 16)),
             Text(label, style: const TextStyle(color: AppTheme.onSurfaceMuted, fontSize: 10)),
           ],
         ),

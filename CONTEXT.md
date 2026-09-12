@@ -26,7 +26,7 @@ The typed payload carried by a SessionComponent — one concrete shape per kind 
 _Avoid_: Data blob, payload map
 
 **Character**:
-A single player character sheet — PG Mode's root entity, owned by no Campaign. It is where the 5e-style rules derived from a sheet live (ability modifiers, proficiency bonus, skill and saving-throw bonuses, spell save DC and attack bonus, spell slots, death saves): a rule that can be computed from a Character belongs to the Character, not to the screen showing it.
+A single player character sheet — PG Mode's root entity, owned by no Campaign. It is where the 5e-style rules derived from a sheet live (ability modifiers, proficiency bonus, skill and saving-throw bonuses, spell save DC and attack bonus, spell slots, the prepared-spell limit, death saves): a rule that can be computed from a Character belongs to the Character, not to the screen showing it.
 _Avoid_: PG (that's the mode), sheet, hero, player (the person, not the character)
 
 **Armor**:

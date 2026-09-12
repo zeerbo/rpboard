@@ -67,9 +67,9 @@ void main() {
   });
 
   group('production ladder', () {
-    test('ships exactly two steps, versions 1 and 2', () {
-      expect(productionLadder.length, 2);
-      expect(productionLadder.map((s) => s.version), [1, 2]);
+    test('ships exactly three steps, versions 1, 2 and 3', () {
+      expect(productionLadder.length, 3);
+      expect(productionLadder.map((s) => s.version), [1, 2, 3]);
     });
 
     test('v1 holds the five baseline CREATE TABLE statements', () {
@@ -84,17 +84,34 @@ void main() {
     });
 
     test('v2 holds the armor and equipment ALTER TABLE statements', () {
-      final statements = productionLadder.last.statements;
+      final statements = productionLadder[1].statements;
 
       expect(statements.length, 2);
       expect(statements[0], 'ALTER TABLE characters ADD COLUMN armor TEXT DEFAULT NULL');
       expect(statements[1], "ALTER TABLE characters ADD COLUMN equipment TEXT DEFAULT '[]'");
     });
 
+    test('v3 holds the prepared-spell limit ALTER TABLE statement', () {
+      final statements = productionLadder[2].statements;
+
+      expect(statements.length, 1);
+      expect(statements.single,
+          'ALTER TABLE characters ADD COLUMN prepared_spells_max INTEGER DEFAULT 0');
+    });
+
+    test('the released v1 and v2 steps are untouched by the v3 append', () {
+      // The ladder is append-only: adding v3 must not have edited a step an
+      // installed database has already run.
+      expect(productionLadder[0].version, 1);
+      expect(productionLadder[0].statements.length, 5);
+      expect(productionLadder[1].version, 2);
+      expect(productionLadder[1].statements.length, 2);
+    });
+
     test('default Migrations() uses the production ladder', () {
       const migrations = Migrations();
 
-      expect(migrations.stepsFrom(0, 2), productionLadder);
+      expect(migrations.stepsFrom(0, 3), productionLadder);
     });
   });
 }

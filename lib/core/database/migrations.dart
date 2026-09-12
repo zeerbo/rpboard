@@ -22,7 +22,10 @@ class MigrationStep {
 /// baseline v1 DDL, moved verbatim out of `SqfliteDatabase`'s former
 /// `_onCreate` — so the schema version stayed at 1 and that change was
 /// invisible to every existing install. Version 2 adds the `armor` and
-/// `equipment` columns to `characters`. Each schema change appends a step
+/// `equipment` columns to `characters`; version 3 adds
+/// `prepared_spells_max`, the player-typed cap on how many spells may be
+/// prepared at once (0 = no cap, so the upgrade is behavior-preserving for
+/// every row already on disk). Each schema change appends a step
 /// here; `onCreate` and `onUpgrade` pick it up automatically since both are
 /// thin callers of [Migrations.stepsFrom].
 const List<MigrationStep> productionLadder = <MigrationStep>[
@@ -136,6 +139,12 @@ const List<MigrationStep> productionLadder = <MigrationStep>[
     statements: <String>[
       'ALTER TABLE characters ADD COLUMN armor TEXT DEFAULT NULL',
       "ALTER TABLE characters ADD COLUMN equipment TEXT DEFAULT '[]'",
+    ],
+  ),
+  MigrationStep(
+    version: 3,
+    statements: <String>[
+      'ALTER TABLE characters ADD COLUMN prepared_spells_max INTEGER DEFAULT 0',
     ],
   ),
 ];

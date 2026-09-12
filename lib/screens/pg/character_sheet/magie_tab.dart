@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme/app_theme.dart';
@@ -6,6 +8,11 @@ import 'shared_widgets.dart';
 
 /// Magie tab: the spellcasting-ability field, the derived spell save DC /
 /// spell attack bonus display, the nine spell-slot rows, and the spell list.
+///
+/// The prepared-spell limit lives on [Character] too: the tab types it into
+/// `preparedSpellsMax`, renders `preparedSpellsCount` against it as a third
+/// chip, and lets [Character.togglePreparedSpell] decide whether a tap on a
+/// spell's circle is allowed — showing a snack bar when it is refused.
 ///
 /// `spellSaveDC`/`spellAttackBonus` are read straight from [Character] —
 /// this is the PRD's headline fix, replacing the old inline
@@ -24,22 +31,51 @@ class MagieTab extends StatefulWidget {
 
 class _MagieTabState extends State<MagieTab> {
   late final TextEditingController _spellcastingAbility;
+  late final TextEditingController _preparedSpellsMax;
 
   @override
   void initState() {
     super.initState();
     _spellcastingAbility = TextEditingController(text: widget.character.spellcastingAbility);
+    _preparedSpellsMax =
+        TextEditingController(text: widget.character.preparedSpellsMax.toString());
   }
 
   @override
   void dispose() {
     _spellcastingAbility.dispose();
+    _preparedSpellsMax.dispose();
     super.dispose();
   }
 
   void _edit(VoidCallback fn) {
     setState(fn);
     widget.onChanged();
+  }
+
+  /// Flips a spell's prepared flag, or explains why it could not.
+  ///
+  /// [Character.togglePreparedSpell] owns the rule and reports its outcome;
+  /// this only turns a refusal into a message. A refusal changes nothing, so
+  /// it neither rebuilds nor marks the character dirty.
+  ///
+  /// The message is shown only while the limit is actually in force, so the
+  /// tab never restates *which* taps the model refuses — a cantrip, whose
+  /// toggle is already inert today and needs no explanation, stays silent
+  /// without this screen carrying a second copy of the cantrip rule.
+  void _togglePrepared(Character c, int index) {
+    if (c.togglePreparedSpell(index)) {
+      _edit(() {});
+      return;
+    }
+    if (c.canPrepareAnotherSpell) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Limite incantesimi preparati raggiunto (${c.preparedSpellsMax})',
+        ),
+      ),
+    );
   }
 
   @override
@@ -59,10 +95,32 @@ class _MagieTabState extends State<MagieTab> {
             onEdited: (v) => _edit(() => c.spellcastingAbility = v),
           ),
           const SizedBox(height: 8),
+          SheetTextField(
+            controller: _preparedSpellsMax,
+            label: 'Incantesimi Preparabili',
+            numeric: true,
+            // Clamped at zero because the shared numeric field's formatter
+            // admits a leading minus sign. No upper bound: a limit is typed
+            // digit by digit, so a ceiling would mangle the number mid-entry.
+            onEdited: (v) => _edit(
+              () => c.preparedSpellsMax = math.max(0, int.tryParse(v) ?? 0),
+            ),
+          ),
+          const SizedBox(height: 8),
           Row(children: [
             InfoChip('CD Magia', '${c.spellSaveDC}'),
             const SizedBox(width: 12),
             InfoChip('Bonus Attacco', '+${c.spellAttackBonus}'),
+            // Hidden entirely at a limit of 0, where the limit is not in
+            // force and the number would mean nothing.
+            if (c.preparedSpellsMax > 0) ...[
+              const SizedBox(width: 12),
+              InfoChip(
+                'Preparati',
+                '${c.preparedSpellsCount}/${c.preparedSpellsMax}',
+                valueColor: c.isOverPreparedLimit ? AppTheme.danger : AppTheme.accent,
+              ),
+            ],
           ]),
           if (c.spellDamageLabel() != null) ...[
             const SizedBox(height: 8),
@@ -122,9 +180,7 @@ class _MagieTabState extends State<MagieTab> {
               dense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 4),
               leading: GestureDetector(
-                onTap: level > 0
-                    ? () => _edit(() => c.spells[e.key].prepared = !c.spells[e.key].prepared)
-                    : null,
+                onTap: level > 0 ? () => _togglePrepared(c, e.key) : null,
                 child: Icon(
                   e.value.prepared ? Icons.check_circle : Icons.circle_outlined,
                   color: e.value.prepared ? AppTheme.accent : AppTheme.onSurfaceMuted,

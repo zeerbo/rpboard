@@ -92,7 +92,7 @@ class SqfliteDatabase implements Database {
 
     return sql.openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );

@@ -274,4 +274,110 @@ void main() {
       },
     );
   });
+
+  group('prepared_spells_max v2 -> v3 (prepared-spell limit)', () {
+    // A third test-owned fake ladder, again mirroring the real characters
+    // table's shape rather than importing `productionLadder`: a v1 CREATE
+    // TABLE, the v2 armor/equipment step, then the v3 step this feature
+    // appends. Kept standalone so the group reads on its own.
+    const limitLadder = <MigrationStep>[
+      MigrationStep(
+        version: 1,
+        statements: [
+          '''
+          CREATE TABLE characters (
+            id TEXT PRIMARY KEY,
+            name TEXT DEFAULT '',
+            spells TEXT DEFAULT '[]'
+          )
+          ''',
+        ],
+      ),
+      MigrationStep(
+        version: 2,
+        statements: [
+          'ALTER TABLE characters ADD COLUMN armor TEXT DEFAULT NULL',
+          "ALTER TABLE characters ADD COLUMN equipment TEXT DEFAULT '[]'",
+        ],
+      ),
+      MigrationStep(
+        version: 3,
+        statements: [
+          'ALTER TABLE characters ADD COLUMN prepared_spells_max INTEGER DEFAULT 0',
+        ],
+      ),
+    ];
+
+    const limitMigrations = Migrations(ladder: limitLadder);
+
+    test(
+      'a v2 characters row survives the upgrade to v3 with its other fields unchanged',
+      () async {
+        final db = await openFresh(
+          version: 2,
+          onCreate: (db, version) => limitMigrations.apply(db, 0, version),
+        );
+        addTearDown(db.close);
+
+        await db.insert('characters', {
+          'id': 'pg1',
+          'name': 'Aria',
+          'spells': '[{"name":"Dardo Incantato","level":1,"prepared":true}]',
+        });
+
+        await limitMigrations.apply(db, 2, 3);
+
+        final rows = await db.query('characters', where: "id = 'pg1'");
+        expect(rows, hasLength(1));
+        expect(rows.single['name'], 'Aria');
+        expect(
+          rows.single['spells'],
+          '[{"name":"Dardo Incantato","level":1,"prepared":true}]',
+        );
+        expect(rows.single['equipment'], '[]');
+      },
+    );
+
+    test(
+      'the new column exists after the upgrade and reads 0 for a pre-existing row',
+      () async {
+        final db = await openFresh(
+          version: 2,
+          onCreate: (db, version) => limitMigrations.apply(db, 0, version),
+        );
+        addTearDown(db.close);
+
+        await db.insert('characters', {'id': 'pg1', 'name': 'Aria'});
+
+        await limitMigrations.apply(db, 2, 3);
+
+        final columns = await db.rawQuery('PRAGMA table_info(characters)');
+        expect(columns.map((c) => c['name']), contains('prepared_spells_max'));
+
+        final rows = await db.query('characters', where: "id = 'pg1'");
+        expect(rows.single['prepared_spells_max'], 0);
+      },
+    );
+
+    test(
+      'no drift: a fresh v3 characters table matches one upgraded from v2',
+      () async {
+        final upgraded = await openFresh(
+          version: 2,
+          onCreate: (db, version) => limitMigrations.apply(db, 0, version),
+        );
+        addTearDown(upgraded.close);
+        await upgraded.insert('characters', {'id': 'pg1', 'name': 'Aria'});
+        await limitMigrations.apply(upgraded, 2, 3);
+
+        final fresh = await openFresh(
+          version: 3,
+          onCreate: (db, version) => limitMigrations.apply(db, 0, version),
+        );
+        addTearDown(fresh.close);
+
+        expect(await schemaOf(upgraded), await schemaOf(fresh));
+      },
+    );
+  });
 }

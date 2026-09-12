@@ -1054,4 +1054,152 @@ void main() {
       expect(restored.features, isEmpty);
     });
   });
+
+  group('Character prepared-spell limit', () {
+    // A Character carrying `spells`, in list order, so tests can address a
+    // spell by the index `togglePreparedSpell` takes.
+    Character withSpells(List<Spell> spells, {int limit = 0}) =>
+        Character(id: 'c1', preparedSpellsMax: limit, spells: spells);
+
+    Spell spell(String name, int level, {bool prepared = false}) =>
+        Spell(name: name, level: level, prepared: prepared);
+
+    test('the prepared count excludes cantrips', () {
+      final c = withSpells([
+        spell('Prestidigitazione', 0, prepared: true),
+        spell('Luce', 0, prepared: true),
+        spell('Dardo Incantato', 1, prepared: true),
+        spell('Scudo', 1),
+      ]);
+
+      expect(c.preparedSpellsCount, 1);
+    });
+
+    test('preparing is refused once the limit is reached', () {
+      final c = withSpells([
+        spell('Dardo Incantato', 1, prepared: true),
+        spell('Scudo', 1),
+      ], limit: 1);
+
+      expect(c.canPrepareAnotherSpell, isFalse);
+      expect(c.togglePreparedSpell(1), isFalse);
+      expect(c.spells[1].prepared, isFalse);
+      expect(c.preparedSpellsCount, 1);
+    });
+
+    test('preparing is allowed while below the limit', () {
+      final c = withSpells([
+        spell('Dardo Incantato', 1, prepared: true),
+        spell('Scudo', 1),
+      ], limit: 2);
+
+      expect(c.canPrepareAnotherSpell, isTrue);
+      expect(c.togglePreparedSpell(1), isTrue);
+      expect(c.spells[1].prepared, isTrue);
+      expect(c.preparedSpellsCount, 2);
+    });
+
+    test('a cantrip is refused whatever the limit', () {
+      final c = withSpells([spell('Luce', 0)], limit: 9);
+
+      expect(c.togglePreparedSpell(0), isFalse);
+      expect(c.spells[0].prepared, isFalse);
+    });
+
+    test('a prepared cantrip is refused too — the flag is never flipped', () {
+      final c = withSpells([spell('Luce', 0, prepared: true)], limit: 9);
+
+      expect(c.togglePreparedSpell(0), isFalse);
+      expect(c.spells[0].prepared, isTrue);
+    });
+
+    test('un-preparing always succeeds, even at the limit', () {
+      final c = withSpells([
+        spell('Dardo Incantato', 1, prepared: true),
+        spell('Scudo', 1, prepared: true),
+      ], limit: 2);
+
+      expect(c.togglePreparedSpell(0), isTrue);
+      expect(c.spells[0].prepared, isFalse);
+      expect(c.preparedSpellsCount, 1);
+    });
+
+    test('un-preparing succeeds from an over-limit state', () {
+      final c = withSpells([
+        spell('Dardo Incantato', 1, prepared: true),
+        spell('Scudo', 1, prepared: true),
+        spell('Sonno', 1, prepared: true),
+      ], limit: 1);
+
+      expect(c.isOverPreparedLimit, isTrue);
+      expect(c.togglePreparedSpell(2), isTrue);
+      expect(c.preparedSpellsCount, 2);
+      expect(c.isOverPreparedLimit, isTrue);
+    });
+
+    test('a limit of zero imposes no constraint', () {
+      final c = withSpells([
+        spell('Dardo Incantato', 1),
+        spell('Scudo', 1),
+        spell('Sonno', 1),
+      ]);
+
+      expect(c.canPrepareAnotherSpell, isTrue);
+      expect(c.togglePreparedSpell(0), isTrue);
+      expect(c.togglePreparedSpell(1), isTrue);
+      expect(c.togglePreparedSpell(2), isTrue);
+      expect(c.preparedSpellsCount, 3);
+      expect(c.isOverPreparedLimit, isFalse);
+    });
+
+    test('lowering the limit below the prepared count keeps every flag', () {
+      final c = withSpells([
+        spell('Dardo Incantato', 1, prepared: true),
+        spell('Scudo', 1, prepared: true),
+        spell('Sonno', 1, prepared: true),
+      ], limit: 3);
+
+      c.preparedSpellsMax = 1;
+
+      expect(c.spells.every((s) => s.prepared), isTrue);
+      expect(c.preparedSpellsCount, 3);
+      expect(c.isOverPreparedLimit, isTrue);
+      expect(c.canPrepareAnotherSpell, isFalse);
+    });
+
+    test('preparing stays refused while over the limit', () {
+      final c = withSpells([
+        spell('Dardo Incantato', 1, prepared: true),
+        spell('Scudo', 1, prepared: true),
+        spell('Sonno', 1),
+      ], limit: 1);
+
+      expect(c.togglePreparedSpell(2), isFalse);
+      expect(c.spells[2].prepared, isFalse);
+    });
+
+    test('an out-of-range index is refused and changes nothing', () {
+      final c = withSpells([spell('Scudo', 1)], limit: 3);
+
+      expect(c.togglePreparedSpell(5), isFalse);
+      expect(c.togglePreparedSpell(-1), isFalse);
+      expect(c.spells.single.prepared, isFalse);
+    });
+
+    test('the limit survives toMap -> fromMap', () {
+      final c = withSpells([spell('Scudo', 1)], limit: 5);
+
+      final restored = Character.fromMap(c.toMap());
+
+      expect(restored.preparedSpellsMax, 5);
+    });
+
+    test('a map with no value for the limit yields zero', () {
+      final legacyMap = withSpells([spell('Scudo', 1)], limit: 5).toMap()
+        ..remove('prepared_spells_max');
+
+      expect(() => Character.fromMap(legacyMap), returnsNormally);
+      expect(Character.fromMap(legacyMap).preparedSpellsMax, 0);
+    });
+  });
 }
