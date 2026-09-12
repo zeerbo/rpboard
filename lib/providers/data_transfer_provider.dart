@@ -7,6 +7,7 @@ import '../core/sync/snapshot_codec.dart';
 import '../core/sync/sync_transport.dart';
 import '../core/sync/version_policy.dart';
 import 'character_provider.dart';
+import 'campaign_provider.dart';
 
 /// Published seams for the data-transfer feature — analogous to
 /// [databaseProvider]: a test overrides these with its own fakes, never a
@@ -34,16 +35,19 @@ class SnapshotVersionRefusedException implements Exception {
 
 /// Everything the Trasferisci dati screen needs to render itself: the
 /// exchange folder's path, the archives found there, and the local
-/// Character count the confirmation dialog compares against an archive's.
+/// Character/Campaign counts the confirmation dialog compares against an
+/// archive's.
 class DataTransferViewState {
   final String exchangeFolderPath;
   final List<ArchiveInfo> archives;
   final int localCharacterCount;
+  final int localCampaignCount;
 
   const DataTransferViewState({
     required this.exchangeFolderPath,
     required this.archives,
     required this.localCharacterCount,
+    required this.localCampaignCount,
   });
 }
 
@@ -60,10 +64,12 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     final folderPath = await transport.exchangeFolderPath();
     final archives = await transport.listArchives();
     final characters = await db.getCharacters();
+    final campaigns = await db.getCampaigns();
     return DataTransferViewState(
       exchangeFolderPath: folderPath,
       archives: archives,
       localCharacterCount: characters.length,
+      localCampaignCount: campaigns.length,
     );
   }
 
@@ -107,10 +113,10 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     );
   }
 
-  /// Replaces the local Characters with [archive]'s content, atomically,
-  /// through the `Database` seam. Throws [SnapshotVersionRefusedException]
-  /// without touching the database at all when the version policy refuses
-  /// the archive.
+  /// Replaces the local Characters and Campaign material with [archive]'s
+  /// content, atomically, through the `Database` seam. Throws
+  /// [SnapshotVersionRefusedException] without touching the database at all
+  /// when the version policy refuses the archive.
   Future<void> importArchive(ArchiveInfo archive) async {
     final outcome = evaluateVersion(archive);
     if (outcome != SchemaVersionOutcome.accepted) {
@@ -121,6 +127,10 @@ class DataTransferNotifier extends AsyncNotifier<DataTransferViewState> {
     await db.importSnapshot(archive.envelope.snapshot);
     ref.invalidateSelf();
     ref.invalidate(characterListProvider);
+    ref.invalidate(campaignListProvider);
+    ref.invalidate(chapterListProvider);
+    ref.invalidate(screenListProvider);
+    ref.invalidate(componentListProvider);
   }
 }
 

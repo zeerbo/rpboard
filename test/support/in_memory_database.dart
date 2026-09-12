@@ -222,16 +222,57 @@ class InMemoryDatabase implements Database {
   // replace for import — applied as one indivisible synchronous pass (no
   // `await` between the clear and the inserts), matching the real adapter's
   // single-transaction, all-or-nothing behavior as an observable contract.
-  // Today this only touches `_characters`; a later ticket adding Campaign
-  // material to AppSnapshot extends this the same way it extends the real
-  // adapter's transaction.
+  //
+  // Export descends from each Campaign to its Chapters, each Chapter to its
+  // SessionScreens, each SessionScreen to its SessionComponents — exactly
+  // like [exportSnapshotFrom]'s real-adapter counterpart — so a row orphaned
+  // by the (deliberately unsimulated, see the class doc comment) cascade
+  // delete is not exported either. This keeps the fake's and the real
+  // adapter's observable export behavior aligned for the exhaustive
+  // aggregate-coverage test.
 
   @override
   Future<AppSnapshot> exportSnapshot() async {
-    final list = _characters.values.toList()
+    final characterList = _characters.values.toList()
       ..sort((a, b) => a.name.compareTo(b.name)); // name ASC, like getCharacters
+    final campaignList = _campaigns.values.toList()
+      ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt)); // updated_at DESC
+
+    final chapters = <Chapter>[];
+    final screens = <SessionScreen>[];
+    final components = <SessionComponent>[];
+
+    for (final campaign in campaignList) {
+      final campaignChapters = _chapters.values
+          .where((c) => c.campaignId == campaign.id)
+          .toList()
+        ..sort((a, b) => a.order.compareTo(b.order)); // order_index ASC
+      chapters.addAll(campaignChapters);
+
+      for (final chapter in campaignChapters) {
+        final chapterScreens = _screens.values
+            .where((s) => s.chapterId == chapter.id)
+            .toList()
+          ..sort((a, b) => a.order.compareTo(b.order)); // order_index ASC
+        screens.addAll(chapterScreens);
+
+        for (final screen in chapterScreens) {
+          final screenComponents = _components.values
+              .where((c) => c.screenId == screen.id)
+              .toList()
+            ..sort((a, b) => a.order.compareTo(b.order)); // order_index ASC
+          components.addAll(screenComponents);
+        }
+      }
+    }
+
     return AppSnapshot(
-      characters: list.map((c) => Character.fromMap(c.toMap())).toList(),
+      characters: characterList.map((c) => Character.fromMap(c.toMap())).toList(),
+      campaigns: campaignList.map((c) => Campaign.fromMap(c.toMap())).toList(),
+      chapters: chapters.map((c) => Chapter.fromMap(c.toMap())).toList(),
+      screens: screens.map((s) => SessionScreen.fromMap(s.toMap())).toList(),
+      components:
+          components.map((c) => SessionComponent.fromMap(c.toMap())).toList(),
     );
   }
 
@@ -240,6 +281,18 @@ class InMemoryDatabase implements Database {
     _characters
       ..clear()
       ..addEntries(snapshot.characters.map((c) => MapEntry(c.id, c)));
+    _campaigns
+      ..clear()
+      ..addEntries(snapshot.campaigns.map((c) => MapEntry(c.id, c)));
+    _chapters
+      ..clear()
+      ..addEntries(snapshot.chapters.map((c) => MapEntry(c.id, c)));
+    _screens
+      ..clear()
+      ..addEntries(snapshot.screens.map((s) => MapEntry(s.id, s)));
+    _components
+      ..clear()
+      ..addEntries(snapshot.components.map((c) => MapEntry(c.id, c)));
   }
 
   /// The real adapter lets SQLite raise on a primary key collision for the

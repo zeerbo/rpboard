@@ -2,6 +2,10 @@ import 'dart:convert';
 
 import '../../models/app_snapshot.dart';
 import '../../models/character.dart';
+import '../../models/campaign.dart';
+import '../../models/chapter.dart';
+import '../../models/session_screen.dart';
+import '../../models/component.dart';
 
 /// Thrown when a string handed to [SnapshotCodec.decode] is not a readable
 /// RPBoard archive: not JSON at all, JSON but not an envelope, an envelope
@@ -90,6 +94,10 @@ class SnapshotCodec {
 
   Map<String, dynamic> _encodePayload(AppSnapshot snapshot) => {
         'characters': snapshot.characters.map((c) => c.toMap()).toList(),
+        'campaigns': snapshot.campaigns.map((c) => c.toMap()).toList(),
+        'chapters': snapshot.chapters.map((c) => c.toMap()).toList(),
+        'screens': snapshot.screens.map((s) => s.toMap()).toList(),
+        'components': snapshot.components.map((c) => c.toMap()).toList(),
       };
 
   /// Parses [source] into a [SnapshotEnvelope], or throws
@@ -161,27 +169,83 @@ class SnapshotCodec {
     );
   }
 
+  /// Reads every one of [AppSnapshot]'s five lists from [payload]. Each is
+  /// independently optional: an archive from before Campaign material was
+  /// added to the format (ticket 02's) carries `characters` only, so
+  /// `campaigns`/`chapters`/`screens`/`components` being absent decodes to an
+  /// empty list rather than a refusal — the same tolerance the model layer's
+  /// own `??` fallbacks already apply to a missing field within one entity.
   AppSnapshot _decodePayload(Map<String, dynamic> payload) {
-    final rawCharacters = payload['characters'];
-    if (rawCharacters == null) return const AppSnapshot(characters: []);
-    if (rawCharacters is! List) {
-      throw const SnapshotFormatException(
-          'characters non è una lista');
+    final characters = _decodeList(
+      payload['characters'],
+      'characters',
+      'un personaggio',
+      (m) => Character.fromMap(m),
+    );
+    final campaigns = _decodeList(
+      payload['campaigns'],
+      'campaigns',
+      'una campagna',
+      (m) => Campaign.fromMap(m),
+    );
+    final chapters = _decodeList(
+      payload['chapters'],
+      'chapters',
+      'un capitolo',
+      (m) => Chapter.fromMap(m),
+    );
+    final screens = _decodeList(
+      payload['screens'],
+      'screens',
+      'una scena',
+      (m) => SessionScreen.fromMap(m),
+    );
+    final components = _decodeList(
+      payload['components'],
+      'components',
+      'un componente',
+      (m) => SessionComponent.fromMap(m),
+    );
+
+    return AppSnapshot(
+      characters: characters,
+      campaigns: campaigns,
+      chapters: chapters,
+      screens: screens,
+      components: components,
+    );
+  }
+
+  /// Shared parsing for one of [AppSnapshot]'s lists: `null` (the field is
+  /// entirely absent, as in an archive predating this list) decodes to an
+  /// empty list; anything present but not a JSON array, or an entry that
+  /// isn't an object or doesn't parse as [T], is refused with a
+  /// [SnapshotFormatException] naming [fieldName]/[itemLabel] — never a
+  /// partially-built list.
+  List<T> _decodeList<T>(
+    dynamic raw,
+    String fieldName,
+    String itemLabel,
+    T Function(Map<String, dynamic>) fromMap,
+  ) {
+    if (raw == null) return <T>[];
+    if (raw is! List) {
+      throw SnapshotFormatException('$fieldName non è una lista');
     }
 
-    final characters = <Character>[];
-    for (final entry in rawCharacters) {
+    final result = <T>[];
+    for (final entry in raw) {
       if (entry is! Map) {
-        throw const SnapshotFormatException(
-            'un personaggio nell\'archivio non è un oggetto JSON');
+        throw SnapshotFormatException(
+            '$itemLabel nell\'archivio non è un oggetto JSON');
       }
       try {
-        characters.add(Character.fromMap(Map<String, dynamic>.from(entry)));
+        result.add(fromMap(Map<String, dynamic>.from(entry)));
       } catch (_) {
-        throw const SnapshotFormatException(
-            'un personaggio nell\'archivio non è stato possibile leggerlo');
+        throw SnapshotFormatException(
+            '$itemLabel nell\'archivio non è stato possibile leggerlo');
       }
     }
-    return AppSnapshot(characters: characters);
+    return result;
   }
 }

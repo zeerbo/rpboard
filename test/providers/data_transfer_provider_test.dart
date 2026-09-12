@@ -6,6 +6,8 @@ import 'package:rpboard/core/sync/snapshot_codec.dart';
 import 'package:rpboard/core/sync/version_policy.dart';
 import 'package:rpboard/models/app_snapshot.dart';
 import 'package:rpboard/models/character.dart';
+import 'package:rpboard/models/campaign.dart';
+import 'package:rpboard/providers/campaign_provider.dart';
 import 'package:rpboard/providers/character_provider.dart';
 import 'package:rpboard/providers/data_transfer_provider.dart';
 
@@ -153,6 +155,43 @@ void main() {
 
     final characters = await db.getCharacters();
     expect(characters.map((c) => c.id), ['old']);
+  });
+
+  test('build reflects the local Campaign count alongside the Character '
+      'count', () async {
+    await db.insertCharacter(Character(id: 'a', name: 'Aragorn'));
+    await db.insertCampaign(Campaign(id: 'camp1', createdAt: DateTime.utc(2026), updatedAt: DateTime.utc(2026)));
+    await db.insertCampaign(Campaign(id: 'camp2', createdAt: DateTime.utc(2026), updatedAt: DateTime.utc(2026)));
+    final container = makeContainer();
+
+    final state = await container.read(dataTransferProvider.future);
+
+    expect(state.localCharacterCount, 1);
+    expect(state.localCampaignCount, 2);
+  });
+
+  test('importArchive replaces local Campaigns with the archive\'s and '
+      'invalidates campaignListProvider', () async {
+    await db.insertCampaign(Campaign(id: 'old-camp', createdAt: DateTime.utc(2026), updatedAt: DateTime.utc(2026)));
+    final exporterDb = InMemoryDatabase();
+    await exporterDb.insertCampaign(Campaign(id: 'new-camp', createdAt: DateTime.utc(2026), updatedAt: DateTime.utc(2026)));
+    final exportedJson = const SnapshotCodec().encode(
+      snapshot: await exporterDb.exportSnapshot(),
+      schemaVersion: const Migrations().latestVersion,
+      appVersion: '1.0.0+1',
+      exportedAt: DateTime.utc(2026, 1, 1),
+      deviceLabel: 'OTHER-PC',
+    );
+    await transport.writeArchive(exportedJson);
+
+    final container = makeContainer();
+    await container.read(campaignListProvider.future);
+    final state = await container.read(dataTransferProvider.future);
+
+    await container.read(dataTransferProvider.notifier).importArchive(state.archives.single);
+
+    final campaigns = await container.read(campaignListProvider.future);
+    expect(campaigns.map((c) => c.id), ['new-camp']);
   });
 
   test('evaluateVersion accepts a matching schemaVersion', () async {

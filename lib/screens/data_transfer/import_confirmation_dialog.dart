@@ -11,11 +11,18 @@ import '../../core/sync/version_policy.dart';
 /// screen's list, together with the version-policy [outcome] already
 /// computed for it. When [outcome] is
 /// [SchemaVersionOutcome.accepted] the dialog states plainly that import
-/// **replaces** local state and names the Character count on both sides;
-/// otherwise it shows [refusalMessage] and offers no import affordance at
-/// all — an incompatible archive never gets as far as a confirm button.
+/// **replaces** local state and names the Character and Campaign counts on
+/// both sides; otherwise it shows [refusalMessage] and offers no import
+/// affordance at all — an incompatible archive never gets as far as a
+/// confirm button.
 class ImportConfirmationDialog extends StatelessWidget {
   final int localCharacterCount;
+
+  /// Defaults to 0 rather than being required: `data_transfer_screen.dart`
+  /// (out of this ticket's file scope — see the ticket's "File scope" note)
+  /// does not yet pass this through from [DataTransferViewState], and this
+  /// default keeps that call site compiling unchanged until it does.
+  final int localCampaignCount;
   final ArchiveInfo archive;
   final SchemaVersionOutcome outcome;
   final String refusalMessage;
@@ -24,6 +31,7 @@ class ImportConfirmationDialog extends StatelessWidget {
   const ImportConfirmationDialog({
     super.key,
     required this.localCharacterCount,
+    this.localCampaignCount = 0,
     required this.archive,
     required this.outcome,
     required this.refusalMessage,
@@ -47,6 +55,7 @@ class ImportConfirmationDialog extends StatelessWidget {
 
     final envelope = archive.envelope;
     final archiveCharacterCount = envelope.snapshot.characters.length;
+    final archiveCampaignCount = envelope.snapshot.campaigns.length;
 
     return AlertDialog(
       title: const Text('Importa dati'),
@@ -61,6 +70,8 @@ class ImportConfirmationDialog extends StatelessWidget {
           const SizedBox(height: 16),
           Text('Personaggi locali: $localCharacterCount'),
           Text('Personaggi nell\'archivio: $archiveCharacterCount'),
+          Text('Campagne locali: $localCampaignCount'),
+          Text('Campagne nell\'archivio: $archiveCampaignCount'),
           const SizedBox(height: 16),
           Text('Esportato il: ${envelope.exportedAt.toLocal()}'),
           Text('Da: ${envelope.deviceLabel}'),

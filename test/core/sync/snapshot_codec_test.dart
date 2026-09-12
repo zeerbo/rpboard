@@ -2,6 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rpboard/core/sync/snapshot_codec.dart';
 import 'package:rpboard/models/app_snapshot.dart';
 import 'package:rpboard/models/character.dart';
+import 'package:rpboard/models/campaign.dart';
+import 'package:rpboard/models/chapter.dart';
+import 'package:rpboard/models/session_screen.dart';
+import 'package:rpboard/models/component.dart';
 
 /// Pure, no-I/O tests for [SnapshotCodec]: `AppSnapshot` <-> JSON, the
 /// envelope, and malformed input. Prior art: `test/models/component_test.dart`
@@ -233,6 +237,215 @@ void main() {
             '"deviceLabel": "x", "payload": {"characters": [{"name": "Nameless"}]}}'),
         throwsA(isA<SnapshotFormatException>()),
       );
+    });
+  });
+
+  group('Campaign material round trip', () {
+    // One of every ComponentData kind, including the unknown-kind shape
+    // ADR-0001 preserves for an unrecognized or malformed payload.
+    SessionComponent componentOf(String id, int order, ComponentData data) =>
+        SessionComponent(id: id, screenId: 's1', order: order, data: data);
+
+    final componentsOfEveryKind = [
+      componentOf('comp-narrative', 0, NarrativeTextData(
+        title: 'Prologo',
+        content: 'Molto tempo fa...',
+        isSecret: true,
+      )),
+      componentOf('comp-npc', 1, NpcStatBlockData(
+        name: 'Goblin',
+        size: 'Piccolo',
+        type: 'Umanoide',
+        alignment: 'Neutrale Malvagio',
+        ac: 15,
+        acType: 'armatura di cuoio',
+        hp: '7 (2d6)',
+        speed: '9 m',
+        str: 8,
+        dex: 14,
+        con: 10,
+        int_: 10,
+        wis: 8,
+        cha: 8,
+        savingThrows: '',
+        skills: 'Furtività +6',
+        damageResistances: '',
+        damageImmunities: '',
+        conditionImmunities: '',
+        senses: 'Scurovisione 18 m',
+        languages: 'Comune',
+        cr: '1/4',
+        xp: 50,
+        traits: [{'name': 'Astuzia nemica'}],
+        actions: [{'name': 'Pugnale'}],
+        bonusActions: [],
+        reactions: [],
+        legendaryActions: [],
+        notes: 'Codardo',
+      )),
+      componentOf('comp-initiative', 2, InitiativeTrackerData(
+        combatants: [
+          {'name': 'Goblin', 'initiative': 15},
+          {'name': 'Aria', 'initiative': 12},
+        ],
+        round: 2,
+        currentTurn: 1,
+      )),
+      componentOf('comp-table', 3, CustomTableData(
+        title: 'Bottino casuale',
+        headers: ['d6', 'Oggetto'],
+        rows: [
+          ['1', 'Moneta antica'],
+          ['2', 'Pugnale arrugginito'],
+        ],
+      )),
+      componentOf('comp-image', 4, ImageData(
+        title: 'Mappa',
+        path: 'assets/images/map.png',
+        caption: 'La foresta oscura',
+      )),
+      componentOf('comp-unknown', 5, UnknownComponentData(
+        rawType: 'futureComponentKind',
+        rawJson: '{"someField":"someValue"}',
+      )),
+    ];
+
+    Campaign campaignOf(String id) => Campaign(
+          id: id,
+          name: 'La maledizione di Strahd',
+          description: 'Una campagna gotica',
+          setting: 'Barovia',
+          createdAt: DateTime.utc(2026, 1, 1),
+          updatedAt: DateTime.utc(2026, 2, 1),
+        );
+
+    test('a snapshot with every aggregate survives the round trip with '
+        'nothing lost and no field altered', () {
+      final campaign = campaignOf('camp1');
+      final chapters = [
+        Chapter(id: 'ch1', campaignId: 'camp1', title: 'Capitolo I', summary: 'Inizio', order: 0),
+        Chapter(id: 'ch2', campaignId: 'camp1', title: 'Capitolo II', summary: 'Seguito', order: 1),
+      ];
+      final screens = [
+        SessionScreen(id: 's1', chapterId: 'ch1', title: 'Scena A', order: 0),
+        SessionScreen(id: 's2', chapterId: 'ch1', title: 'Scena B', order: 1),
+      ];
+
+      final original = AppSnapshot(
+        characters: [Character(id: 'c1', name: 'Aria')],
+        campaigns: [campaign],
+        chapters: chapters,
+        screens: screens,
+        components: componentsOfEveryKind,
+      );
+
+      final json = codec.encode(
+        snapshot: original,
+        schemaVersion: 4,
+        appVersion: '1.0.0+1',
+        exportedAt: DateTime.utc(2026, 9, 12),
+        deviceLabel: 'DESKTOP-TEST',
+      );
+      final decoded = codec.decode(json).snapshot;
+
+      expect(decoded.campaigns.map((c) => c.toMap()).toList(),
+          original.campaigns.map((c) => c.toMap()).toList());
+      expect(decoded.chapters.map((c) => c.toMap()).toList(),
+          original.chapters.map((c) => c.toMap()).toList());
+      expect(decoded.screens.map((s) => s.toMap()).toList(),
+          original.screens.map((s) => s.toMap()).toList());
+      expect(decoded.components.map((c) => c.toMap()).toList(),
+          original.components.map((c) => c.toMap()).toList(),
+          reason: 'every ComponentData kind, including the unknown-kind '
+              'shape, must round-trip with its typed payload intact');
+    });
+
+    test('each typed ComponentData payload round-trips as the same kind it '
+        'was', () {
+      final original = AppSnapshot(characters: const [], components: componentsOfEveryKind);
+      final json = codec.encode(
+        snapshot: original,
+        schemaVersion: 4,
+        appVersion: '1.0.0+1',
+        exportedAt: DateTime.utc(2026),
+        deviceLabel: 'x',
+      );
+
+      final decoded = codec.decode(json).snapshot.components;
+      expect(decoded, hasLength(componentsOfEveryKind.length));
+
+      expect(decoded[0].data, isA<NarrativeTextData>());
+      expect((decoded[0].data as NarrativeTextData).title, 'Prologo');
+
+      expect(decoded[1].data, isA<NpcStatBlockData>());
+      expect((decoded[1].data as NpcStatBlockData).name, 'Goblin');
+
+      expect(decoded[2].data, isA<InitiativeTrackerData>());
+      expect((decoded[2].data as InitiativeTrackerData).round, 2);
+
+      expect(decoded[3].data, isA<CustomTableData>());
+      expect((decoded[3].data as CustomTableData).headers, ['d6', 'Oggetto']);
+
+      expect(decoded[4].data, isA<ImageData>());
+      expect((decoded[4].data as ImageData).path, 'assets/images/map.png');
+
+      expect(decoded[5].data, isA<UnknownComponentData>());
+      final unknown = decoded[5].data as UnknownComponentData;
+      expect(unknown.rawType, 'futureComponentKind');
+      expect(unknown.rawJson, '{"someField":"someValue"}');
+    });
+
+    test('the dense, zero-based order of Chapters, SessionScreens and '
+        'SessionComponents survives the round trip unchanged', () {
+      final chapters = [
+        Chapter(id: 'ch1', campaignId: 'camp1', order: 0),
+        Chapter(id: 'ch2', campaignId: 'camp1', order: 1),
+        Chapter(id: 'ch3', campaignId: 'camp1', order: 2),
+      ];
+      final screens = [
+        SessionScreen(id: 's1', chapterId: 'ch1', order: 0),
+        SessionScreen(id: 's2', chapterId: 'ch1', order: 1),
+      ];
+      final components = [
+        componentOf('cA', 0, NarrativeTextData.empty()),
+        componentOf('cB', 1, NarrativeTextData.empty()),
+        componentOf('cC', 2, NarrativeTextData.empty()),
+      ];
+
+      final json = codec.encode(
+        snapshot: AppSnapshot(
+          characters: const [],
+          chapters: chapters,
+          screens: screens,
+          components: components,
+        ),
+        schemaVersion: 4,
+        appVersion: '1.0.0+1',
+        exportedAt: DateTime.utc(2026),
+        deviceLabel: 'x',
+      );
+      final decoded = codec.decode(json).snapshot;
+
+      expect(decoded.chapters.map((c) => c.order), [0, 1, 2]);
+      expect(decoded.chapters.map((c) => c.id), ['ch1', 'ch2', 'ch3']);
+      expect(decoded.screens.map((s) => s.order), [0, 1]);
+      expect(decoded.components.map((c) => c.order), [0, 1, 2]);
+    });
+
+    test('an archive with no Campaign material (a ticket-02 archive) decodes '
+        'with empty Campaign lists rather than being refused', () {
+      final json = '{"formatVersion": 1, "schemaVersion": 4, '
+          '"appVersion": "1.0.0", "exportedAt": "2026-01-01T00:00:00.000Z", '
+          '"deviceLabel": "x", "payload": {"characters": '
+          '[{"id": "c1", "name": "Aria"}]}}';
+
+      final decoded = codec.decode(json).snapshot;
+
+      expect(decoded.characters, hasLength(1));
+      expect(decoded.campaigns, isEmpty);
+      expect(decoded.chapters, isEmpty);
+      expect(decoded.screens, isEmpty);
+      expect(decoded.components, isEmpty);
     });
   });
 }

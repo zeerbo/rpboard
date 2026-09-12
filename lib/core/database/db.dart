@@ -64,18 +64,23 @@ abstract interface class Database {
 
   // ─── Data transfer (AppSnapshot) ────────────────────────────────────────────
   //
-  // See the data-transfer PRD and ADR-0007. Today's [AppSnapshot] covers
-  // Characters only; a later ticket adds Campaign material as more fields on
-  // that class, with no change to either method's signature here.
+  // See the data-transfer PRD and ADR-0007. [AppSnapshot] covers every
+  // Character and every Campaign with its owned Chapters, SessionScreens and
+  // SessionComponents.
 
   /// Reads the complete application state as a point-in-time [AppSnapshot].
+  /// Campaign material is reached only by descending from a Campaign
+  /// (Campaign → Chapter → SessionScreen → SessionComponent), so a row
+  /// orphaned by the foreign-key enforcement defect (ADR-0006) is never
+  /// exported — expected, see [AppSnapshot]'s doc comment.
   Future<AppSnapshot> exportSnapshot();
 
   /// Replaces every aggregate [AppSnapshot] carries with [snapshot]'s
   /// content, atomically: every table it owns is deleted explicitly and then
   /// repopulated, inside one transaction, never relying on `ON DELETE
   /// CASCADE`. Replace semantics, not upsert — nothing of the previous
-  /// content survives an import.
+  /// content survives an import, including any Campaign-material orphan rows
+  /// [exportSnapshot] never carried over.
   Future<void> importSnapshot(AppSnapshot snapshot);
 }
 
@@ -116,33 +121,112 @@ Future<sql.Database> openAppDatabase(String path) {
 Future<void> _enforceForeignKeys(sql.Database db) =>
     db.execute('PRAGMA foreign_keys = ON');
 
-/// Reads the complete character roster from [db] as an [AppSnapshot]. A
+/// Reads the complete application state from [db] as an [AppSnapshot]. A
 /// connection-level counterpart to [SqfliteDatabase.exportSnapshot], pulled
 /// out to a top-level function — like [openAppDatabase] — so a test can
 /// exercise it against a real ffi connection without going through
 /// [SqfliteDatabase]'s `path_provider`-based path resolution, which has no
 /// implementation in a `flutter test` process (ADR-0006).
+///
+/// Campaign material is read by descending from each Campaign — its
+/// Chapters, each Chapter's SessionScreens, each SessionScreen's
+/// SessionComponents — rather than a flat `SELECT * FROM chapters` and so
+/// on. This is deliberate, not incidental: a row orphaned by the
+/// foreign-key-enforcement defect (ADR-0006) has no reachable parent, so
+/// descending from Campaign naturally excludes it. See [AppSnapshot]'s doc
+/// comment on this known, expected effect.
 Future<AppSnapshot> exportSnapshotFrom(sql.Database db) async {
-  final rows = await db.query('characters', orderBy: 'name ASC');
-  return AppSnapshot(characters: rows.map(Character.fromMap).toList());
+  final characterRows = await db.query('characters', orderBy: 'name ASC');
+  final characters = characterRows.map(Character.fromMap).toList();
+
+  final campaignRows = await db.query('campaigns', orderBy: 'updated_at DESC');
+  final campaigns = campaignRows.map(Campaign.fromMap).toList();
+
+  final chapters = <Chapter>[];
+  final screens = <SessionScreen>[];
+  final components = <SessionComponent>[];
+
+  for (final campaign in campaigns) {
+    final chapterRows = await db.query(
+      'chapters',
+      where: 'campaign_id = ?',
+      whereArgs: [campaign.id],
+      orderBy: 'order_index ASC',
+    );
+    final campaignChapters = chapterRows.map(Chapter.fromMap).toList();
+    chapters.addAll(campaignChapters);
+
+    for (final chapter in campaignChapters) {
+      final screenRows = await db.query(
+        'session_screens',
+        where: 'chapter_id = ?',
+        whereArgs: [chapter.id],
+        orderBy: 'order_index ASC',
+      );
+      final chapterScreens = screenRows.map(SessionScreen.fromMap).toList();
+      screens.addAll(chapterScreens);
+
+      for (final screen in chapterScreens) {
+        final componentRows = await db.query(
+          'components',
+          where: 'screen_id = ?',
+          whereArgs: [screen.id],
+          orderBy: 'order_index ASC',
+        );
+        components.addAll(componentRows.map(SessionComponent.fromMap));
+      }
+    }
+  }
+
+  return AppSnapshot(
+    characters: characters,
+    campaigns: campaigns,
+    chapters: chapters,
+    screens: screens,
+    components: components,
+  );
 }
 
-/// Replaces every table [AppSnapshot] currently carries — today just
-/// `characters` — with [snapshot]'s content, inside one transaction. Deletes
-/// are explicit and never rely on `ON DELETE CASCADE` (see the data-transfer
-/// PRD's "Orphan rows" note): a failure partway through must leave [db]
-/// exactly as it was before this call, which is asserted against a real ffi
-/// connection in `test/core/database/snapshot_import_execution_test.dart` —
-/// the suite's third documented exception to the pure-test rule, after the
-/// migration execution test (ADR-0005) and the foreign-key test (ADR-0006).
-/// The in-memory fake has no transaction, so it cannot prove a rollback;
+/// Replaces every table [AppSnapshot] carries — `characters`, `campaigns`,
+/// `chapters`, `session_screens`, `components` — with [snapshot]'s content,
+/// inside one transaction. Deletes are explicit and never rely on `ON DELETE
+/// CASCADE` (see the data-transfer PRD's "Orphan rows" note): a failure
+/// partway through must leave [db] exactly as it was before this call, which
+/// is asserted against a real ffi connection in
+/// `test/core/database/snapshot_import_execution_test.dart` — the suite's
+/// third documented exception to the pure-test rule, after the migration
+/// execution test (ADR-0005) and the foreign-key test (ADR-0006). The
+/// in-memory fake has no transaction, so it cannot prove a rollback;
 /// atomicity is the entire justification for a destructive import, so it is
 /// asserted where it actually lives.
+///
+/// Deletes run leaf-to-root (components, then session_screens, then
+/// chapters, then campaigns, then characters) and inserts run root-to-leaf
+/// (characters and campaigns, then chapters, then screens, then components),
+/// so a parent row always exists before a child row referencing it is
+/// inserted — required now that foreign keys are enforced (ADR-0006).
 Future<void> importSnapshotInto(sql.Database db, AppSnapshot snapshot) async {
   await db.transaction((txn) async {
+    await txn.delete('components');
+    await txn.delete('session_screens');
+    await txn.delete('chapters');
+    await txn.delete('campaigns');
     await txn.delete('characters');
+
     for (final character in snapshot.characters) {
       await txn.insert('characters', character.toMap());
+    }
+    for (final campaign in snapshot.campaigns) {
+      await txn.insert('campaigns', campaign.toMap());
+    }
+    for (final chapter in snapshot.chapters) {
+      await txn.insert('chapters', chapter.toMap());
+    }
+    for (final screen in snapshot.screens) {
+      await txn.insert('session_screens', screen.toMap());
+    }
+    for (final component in snapshot.components) {
+      await txn.insert('components', component.toMap());
     }
   });
 }

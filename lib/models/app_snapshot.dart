@@ -1,4 +1,8 @@
 import 'character.dart';
+import 'campaign.dart';
+import 'chapter.dart';
+import 'session_screen.dart';
+import 'component.dart';
 
 /// The complete application state at one instant, for the data-transfer
 /// feature (`Trasferisci dati`): every root aggregate the user owns, held as
@@ -19,12 +23,34 @@ import 'character.dart';
 /// dropped on export. This is recorded three times on purpose: here, in
 /// `CONTEXT.md`, and in `CLAUDE.md`.
 ///
-/// **Current scope:** Characters only. Campaign material (Campaigns with
-/// their Chapters, SessionScreens and SessionComponents) is added by a later
-/// ticket as another field on this class and another key in the codec's
-/// envelope payload — additive, not a reshape of the format.
+/// **Scope:** every Character, and every Campaign with its owned Chapters,
+/// SessionScreens and SessionComponents — the four Campaign-material lists
+/// are flat (each entity already carries its own owning-parent id, exactly
+/// as the database rows do), not a nested tree; nesting would duplicate the
+/// parent-id relationship the models already express. An archive produced
+/// before Campaign material was added to the format (this ticket's
+/// predecessor) carries none of these four lists; decoding one defaults them
+/// to empty, so it still imports cleanly.
+///
+/// **Known effect, not a defect:** exporting reaches Chapters only by
+/// descending from a Campaign (Campaign → Chapter → SessionScreen →
+/// SessionComponent), so a row orphaned by the foreign-key enforcement defect
+/// (see ADR-0006) is never exported, and the first import after that deletes
+/// it along with everything else the destination held. This is expected and
+/// recorded here and in ADR-0007's Consequences; the ticket that adds
+/// Campaign material to the snapshot does not try to preserve orphans.
 class AppSnapshot {
   final List<Character> characters;
+  final List<Campaign> campaigns;
+  final List<Chapter> chapters;
+  final List<SessionScreen> screens;
+  final List<SessionComponent> components;
 
-  const AppSnapshot({required this.characters});
+  const AppSnapshot({
+    required this.characters,
+    this.campaigns = const [],
+    this.chapters = const [],
+    this.screens = const [],
+    this.components = const [],
+  });
 }

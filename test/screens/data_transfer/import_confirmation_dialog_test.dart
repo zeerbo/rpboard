@@ -5,6 +5,7 @@ import 'package:rpboard/core/sync/sync_transport.dart';
 import 'package:rpboard/core/sync/version_policy.dart';
 import 'package:rpboard/models/app_snapshot.dart';
 import 'package:rpboard/models/character.dart';
+import 'package:rpboard/models/campaign.dart';
 import 'package:rpboard/screens/data_transfer/import_confirmation_dialog.dart';
 
 /// Widget tests for [ImportConfirmationDialog] — the last thing between the
@@ -16,10 +17,15 @@ void main() {
     required DateTime exportedAt,
     required String deviceLabel,
     int schemaVersion = 4,
+    int campaignCount = 0,
   }) {
     final characters = List.generate(
       characterCount,
       (i) => Character(id: 'c$i', name: 'Character $i'),
+    );
+    final campaigns = List.generate(
+      campaignCount,
+      (i) => Campaign(id: 'camp$i', createdAt: DateTime(2026), updatedAt: DateTime(2026)),
     );
     return ArchiveInfo(
       path: '/fake/archive.json',
@@ -29,7 +35,7 @@ void main() {
         appVersion: '1.0.0+1',
         exportedAt: exportedAt,
         deviceLabel: deviceLabel,
-        snapshot: AppSnapshot(characters: characters),
+        snapshot: AppSnapshot(characters: characters, campaigns: campaigns),
       ),
     );
   }
@@ -37,6 +43,7 @@ void main() {
   Future<void> pump(
     WidgetTester tester, {
     required int localCharacterCount,
+    int localCampaignCount = 0,
     required ArchiveInfo archive,
     SchemaVersionOutcome outcome = SchemaVersionOutcome.accepted,
     String refusalMessage = '',
@@ -47,6 +54,7 @@ void main() {
         home: Scaffold(
           body: ImportConfirmationDialog(
             localCharacterCount: localCharacterCount,
+            localCampaignCount: localCampaignCount,
             archive: archive,
             outcome: outcome,
             refusalMessage: refusalMessage,
@@ -155,5 +163,27 @@ void main() {
 
     expect(find.text('Importa'), findsNothing);
     expect(find.textContaining('Aggiorna'), findsOneWidget);
+  });
+
+  testWidgets('shows the local and archive Campaign counts alongside the '
+      'Character counts', (tester) async {
+    final archive = archiveWith(
+      characterCount: 3,
+      campaignCount: 2,
+      exportedAt: DateTime(2026, 1, 1),
+      deviceLabel: 'DESKTOP-ONE',
+    );
+
+    await pump(
+      tester,
+      localCharacterCount: 5,
+      localCampaignCount: 4,
+      archive: archive,
+    );
+
+    expect(find.textContaining('5'), findsWidgets);
+    expect(find.textContaining('3'), findsWidgets);
+    expect(find.textContaining('4'), findsWidgets);
+    expect(find.textContaining('2'), findsWidgets);
   });
 }

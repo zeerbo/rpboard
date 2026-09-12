@@ -3,6 +3,10 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart' as sql;
 import 'package:rpboard/core/database/db.dart';
 import 'package:rpboard/models/app_snapshot.dart';
 import 'package:rpboard/models/character.dart';
+import 'package:rpboard/models/campaign.dart';
+import 'package:rpboard/models/chapter.dart';
+import 'package:rpboard/models/session_screen.dart';
+import 'package:rpboard/models/component.dart';
 
 /// The suite's **third** documented exception to the pure-test rule, after
 /// the migration execution test (ADR-0005) and the foreign-key test
@@ -72,6 +76,44 @@ void main() {
 
       final rows = await db.query('characters', orderBy: 'id ASC');
       expect(rows.map((r) => r['id']), ['a', 'b']);
+    },
+  );
+
+  test(
+    'importing Campaign material against a real, foreign-key-enforced '
+    'connection inserts parents before children without violating the '
+    'schema\'s FOREIGN KEY constraints',
+    () async {
+      final db = await openAppDatabase(sql.inMemoryDatabasePath);
+      addTearDown(db.close);
+
+      final snapshot = AppSnapshot(
+        characters: const [],
+        campaigns: [
+          Campaign(id: 'camp1', createdAt: DateTime.utc(2026), updatedAt: DateTime.utc(2026)),
+        ],
+        chapters: [Chapter(id: 'ch1', campaignId: 'camp1', order: 0)],
+        screens: [SessionScreen(id: 's1', chapterId: 'ch1', order: 0)],
+        components: [
+          SessionComponent(id: 'comp1', screenId: 's1', order: 0, data: NarrativeTextData.empty()),
+        ],
+      );
+
+      await importSnapshotInto(db, snapshot);
+
+      expect((await db.query('campaigns')).map((r) => r['id']), ['camp1']);
+      expect((await db.query('chapters')).map((r) => r['id']), ['ch1']);
+      expect((await db.query('session_screens')).map((r) => r['id']), ['s1']);
+      expect((await db.query('components')).map((r) => r['id']), ['comp1']);
+
+      // Importing a second time must delete the whole hierarchy and
+      // re-insert it cleanly — proof that the delete order (leaf-to-root)
+      // does not leave a child row behind that would make the next
+      // campaign delete or re-insert violate a FOREIGN KEY constraint.
+      await importSnapshotInto(db, snapshot);
+
+      expect((await db.query('campaigns')).map((r) => r['id']), ['camp1']);
+      expect((await db.query('components')).map((r) => r['id']), ['comp1']);
     },
   );
 }
