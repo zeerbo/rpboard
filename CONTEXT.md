@@ -50,7 +50,7 @@ The persistence seam — an interface declaring the app's CRUD operations over i
 _Avoid_: DB layer, DAO, repository (the seam is one interface, not per-aggregate repositories)
 
 **Migration**:
-One step of the ladder that takes an already-installed Database from one schema version to the next. The ladder is ordered and append-only: a released step is never edited, and creating a database from scratch means running every step from zero, so a fresh install and an upgraded install end up identical. See [ADR-0005](docs/adr/0005-schema-migrations.md).
+One step of the ladder that takes an already-installed Database from one schema version to the next. The ladder is ordered and append-only: a released step is never edited, and creating a database from scratch means running every step from zero, so a fresh install and an upgraded install end up identical. A step is a one-off at a version change, which is why *connection configuration* is not a Migration and never belongs in one: settings like foreign key enforcement are per-connection state, not schema, and live in the database's open path so they apply on every launch. See [ADR-0005](docs/adr/0005-schema-migrations.md) and [ADR-0006](docs/adr/0006-foreign-key-enforcement.md).
 _Avoid_: Patch, upgrade script, seed
 
 **PG Mode**:

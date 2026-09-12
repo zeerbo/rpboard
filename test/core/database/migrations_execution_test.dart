@@ -40,8 +40,8 @@ import 'package:rpboard/core/database/migrations.dart';
 ///
 /// Instead, each test keeps the same live connection (standing in for "the
 /// same file") and calls [Migrations.apply] a second time with the old and
-/// new versions — the exact call `SqfliteDatabase._onUpgrade` makes when
-/// `sqflite` invokes it during a real reopen. `sqflite`'s own version
+/// new versions — the exact call the `onUpgrade` hook in `openAppDatabase`
+/// makes when `sqflite` invokes it during a real reopen. `sqflite`'s own version
 /// detection and hook dispatch is well-tested library code that this PRD
 /// doesn't touch; what these tests verify is the part this PRD adds: that
 /// applying the selected steps against a live, already-populated connection

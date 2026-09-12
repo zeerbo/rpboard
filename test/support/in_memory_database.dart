@@ -20,9 +20,15 @@ import 'package:rpboard/models/component.dart';
 /// without reimplementing SQLite. Deleting a parent here leaves its children
 /// behind. Cascade behavior belongs to a real-adapter/integration test.
 ///
-/// `insert*` upserts (mirrors `ConflictAlgorithm.replace`). `update*` mutates
-/// only an existing row (a missing id is a no-op, mirroring SQL `UPDATE`).
-/// `delete*` removes the single row by id.
+/// `insert*` splits by table, mirroring the real adapter after ADR-0006:
+/// inserting a Campaign, Chapter or SessionScreen under an id that already
+/// exists **throws**, because `SqfliteDatabase` dropped
+/// `ConflictAlgorithm.replace` on those three parent tables — with foreign keys
+/// enforced, replacing a parent row cascades its children away. Character and
+/// SessionComponent inserts still upsert, matching the `replace` policy the
+/// adapter keeps on those two leaf tables. `update*` mutates only an existing
+/// row (a missing id is a no-op, mirroring SQL `UPDATE`). `delete*` removes the
+/// single row by id.
 ///
 /// Reads return freshly-rebuilt instances (`X.fromMap(stored.toMap())`), exactly
 /// as [SqfliteDatabase] returns `X.fromMap(row)`. Models are mutable, so handing
@@ -77,7 +83,10 @@ class InMemoryDatabase implements Database {
   }
 
   @override
-  Future<void> insertCampaign(Campaign c) async => _campaigns[c.id] = c;
+  Future<void> insertCampaign(Campaign c) async {
+    _rejectDuplicate(_campaigns, c.id, 'campaigns');
+    _campaigns[c.id] = c;
+  }
 
   @override
   Future<void> updateCampaign(Campaign c) async {
@@ -105,7 +114,10 @@ class InMemoryDatabase implements Database {
   }
 
   @override
-  Future<void> insertChapter(Chapter c) async => _chapters[c.id] = c;
+  Future<void> insertChapter(Chapter c) async {
+    _rejectDuplicate(_chapters, c.id, 'chapters');
+    _chapters[c.id] = c;
+  }
 
   @override
   Future<void> updateChapter(Chapter c) async {
@@ -146,7 +158,10 @@ class InMemoryDatabase implements Database {
   }
 
   @override
-  Future<void> insertScreen(SessionScreen s) async => _screens[s.id] = s;
+  Future<void> insertScreen(SessionScreen s) async {
+    _rejectDuplicate(_screens, s.id, 'session_screens');
+    _screens[s.id] = s;
+  }
 
   @override
   Future<void> updateScreen(SessionScreen s) async {
@@ -196,6 +211,19 @@ class InMemoryDatabase implements Database {
       final current = _components[c.id];
       if (current != null && current.order == c.order) continue;
       _components[c.id] = c;
+    }
+  }
+
+  /// The real adapter lets SQLite raise on a primary key collision for the
+  /// three parent tables; this is the fake's stand-in for that. It throws
+  /// [StateError] rather than sqflite's own exception type on purpose — a test
+  /// that asserted the concrete exception class would be asserting which
+  /// adapter it is running against, which is exactly what the seam exists to
+  /// hide. What callers may rely on is that a duplicate parent id fails loudly
+  /// instead of silently taking a subtree with it.
+  void _rejectDuplicate(Map<String, Object?> rows, String id, String table) {
+    if (rows.containsKey(id)) {
+      throw StateError('duplicate id "$id" inserted into $table');
     }
   }
 }

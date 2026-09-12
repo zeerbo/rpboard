@@ -66,16 +66,43 @@ abstract interface class Database {
 /// override it with an in-memory fake.
 final databaseProvider = Provider<Database>((ref) => SqfliteDatabase());
 
+/// Opens an RPBoard database at [path] with the app's own connection
+/// configuration and schema wiring: the [productionLadder] drives both the
+/// fresh-install and the carry-forward hook, so a freshly created database and
+/// a migrated one are always built by the identical code path (ADR-0005).
+///
+/// [SqfliteDatabase._open] resolves the on-device path, then calls this. Only
+/// the path varies, which is the point: a test can open a throwaway database
+/// configured *exactly* the way the app configures its real one, down to the
+/// ladder. A test that re-listed these options itself would prove nothing about
+/// how the app behaves — only about how the test builds its options, which is
+/// how ADR-0006's defect went unnoticed for the whole life of the schema.
+Future<sql.Database> openAppDatabase(String path) {
+  const migrations = Migrations();
+  return sql.openDatabase(
+    path,
+    version: 4,
+    onConfigure: _enforceForeignKeys,
+    onCreate: (db, version) => migrations.apply(db, 0, version),
+    onUpgrade: (db, oldVersion, newVersion) =>
+        migrations.apply(db, oldVersion, newVersion),
+  );
+}
+
+/// Turns on the foreign key enforcement the schema's `ON DELETE CASCADE`
+/// clauses have always assumed. SQLite leaves it off by default and the
+/// setting is per *connection*, not stored in the file, so this has to run on
+/// every open — which is why it lives here and not in a [Migrations] step, a
+/// step being a one-off at a version change. `sqflite` invokes `onConfigure`
+/// first among the open hooks and outside the version-change transaction,
+/// where a pragma can still take effect. See ADR-0006.
+Future<void> _enforceForeignKeys(sql.Database db) =>
+    db.execute('PRAGMA foreign_keys = ON');
+
 /// The real SQLite adapter. Lazy-open, ffi init, and path resolution are all
 /// private here; sqflite's own [sql.Database] type never leaves this file.
 class SqfliteDatabase implements Database {
   sql.Database? _db;
-
-  /// Selects and applies schema steps for both a fresh install ([_onCreate])
-  /// and an existing one being carried forward ([_onUpgrade]). Both hooks
-  /// below are thin callers of the same ladder, so a freshly created
-  /// database and a migrated one can never quietly drift apart.
-  final Migrations _migrations = const Migrations();
 
   Future<sql.Database> get _conn async => _db ??= await _open();
 
@@ -90,22 +117,8 @@ class SqfliteDatabase implements Database {
     final path = p.join(dir.path, 'rpboard', 'rpboard.db');
     await Directory(p.dirname(path)).create(recursive: true);
 
-    return sql.openDatabase(
-      path,
-      version: 3,
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
+    return openAppDatabase(path);
   }
-
-  /// A fresh database: apply every step from scratch.
-  Future<void> _onCreate(sql.Database db, int version) =>
-      _migrations.apply(db, 0, version);
-
-  /// An existing database being carried forward: apply every step above
-  /// whatever version is already on disk.
-  Future<void> _onUpgrade(sql.Database db, int oldVersion, int newVersion) =>
-      _migrations.apply(db, oldVersion, newVersion);
 
   // ─── Characters ────────────────────────────────────────────────────────────
 
@@ -158,11 +171,17 @@ class SqfliteDatabase implements Database {
     return rows.isEmpty ? null : Campaign.fromMap(rows.first);
   }
 
+  /// No `ConflictAlgorithm.replace` here, unlike the two leaf tables. With
+  /// foreign keys enforced (ADR-0006), `INSERT OR REPLACE` on a parent row
+  /// *deletes* the existing row before inserting, and that delete cascades:
+  /// re-inserting an existing id would silently take its whole subtree with
+  /// it. Verified, and characterized by a test. Letting a duplicate id throw
+  /// is the far better failure — no caller does it today, since every `add`
+  /// mints a fresh uuid and every edit goes through `update`.
   @override
   Future<void> insertCampaign(Campaign c) async {
     final d = await _conn;
-    await d.insert('campaigns', c.toMap(),
-        conflictAlgorithm: sql.ConflictAlgorithm.replace);
+    await d.insert('campaigns', c.toMap());
   }
 
   @override
@@ -196,11 +215,11 @@ class SqfliteDatabase implements Database {
     return rows.isEmpty ? null : Chapter.fromMap(rows.first);
   }
 
+  /// See [insertCampaign] on why this one does not replace on conflict.
   @override
   Future<void> insertChapter(Chapter c) async {
     final d = await _conn;
-    await d.insert('chapters', c.toMap(),
-        conflictAlgorithm: sql.ConflictAlgorithm.replace);
+    await d.insert('chapters', c.toMap());
   }
 
   @override
@@ -262,11 +281,11 @@ class SqfliteDatabase implements Database {
     return rows.isEmpty ? null : SessionScreen.fromMap(rows.first);
   }
 
+  /// See [insertCampaign] on why this one does not replace on conflict.
   @override
   Future<void> insertScreen(SessionScreen s) async {
     final d = await _conn;
-    await d.insert('session_screens', s.toMap(),
-        conflictAlgorithm: sql.ConflictAlgorithm.replace);
+    await d.insert('session_screens', s.toMap());
   }
 
   @override

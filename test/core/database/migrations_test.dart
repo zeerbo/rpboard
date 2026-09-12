@@ -67,9 +67,9 @@ void main() {
   });
 
   group('production ladder', () {
-    test('ships exactly three steps, versions 1, 2 and 3', () {
-      expect(productionLadder.length, 3);
-      expect(productionLadder.map((s) => s.version), [1, 2, 3]);
+    test('ships exactly four steps, versions 1 through 4', () {
+      expect(productionLadder.length, 4);
+      expect(productionLadder.map((s) => s.version), [1, 2, 3, 4]);
     });
 
     test('v1 holds the five baseline CREATE TABLE statements', () {
@@ -99,19 +99,41 @@ void main() {
           'ALTER TABLE characters ADD COLUMN prepared_spells_max INTEGER DEFAULT 0');
     });
 
-    test('the released v1 and v2 steps are untouched by the v3 append', () {
-      // The ladder is append-only: adding v3 must not have edited a step an
+    test('v4 sweeps orphans from the three child tables, parents first', () {
+      final statements = productionLadder[3].statements;
+
+      expect(statements.length, 3);
+      // The order is load-bearing, not cosmetic: deleting orphaned chapters
+      // first is what turns their session_screens into orphans for the next
+      // statement to catch, and likewise down to components. What the step
+      // must never do is lean on ON DELETE CASCADE, which is why each
+      // statement names its own parent table.
+      expect(statements[0], contains('DELETE FROM chapters'));
+      expect(statements[0], contains('FROM campaigns'));
+      expect(statements[1], contains('DELETE FROM session_screens'));
+      expect(statements[1], contains('FROM chapters'));
+      expect(statements[2], contains('DELETE FROM components'));
+      expect(statements[2], contains('FROM session_screens'));
+      // NOT IN would yield no rows at all if any parent id were NULL, which
+      // SQLite permits in a TEXT PRIMARY KEY.
+      expect(statements.every((s) => s.contains('NOT EXISTS')), isTrue);
+    });
+
+    test('the released v1, v2 and v3 steps are untouched by later appends', () {
+      // The ladder is append-only: adding a step must not have edited one an
       // installed database has already run.
       expect(productionLadder[0].version, 1);
       expect(productionLadder[0].statements.length, 5);
       expect(productionLadder[1].version, 2);
       expect(productionLadder[1].statements.length, 2);
+      expect(productionLadder[2].version, 3);
+      expect(productionLadder[2].statements.length, 1);
     });
 
     test('default Migrations() uses the production ladder', () {
       const migrations = Migrations();
 
-      expect(migrations.stepsFrom(0, 3), productionLadder);
+      expect(migrations.stepsFrom(0, 4), productionLadder);
     });
   });
 }

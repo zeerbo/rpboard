@@ -25,9 +25,17 @@ class MigrationStep {
 /// `equipment` columns to `characters`; version 3 adds
 /// `prepared_spells_max`, the player-typed cap on how many spells may be
 /// prepared at once (0 = no cap, so the upgrade is behavior-preserving for
-/// every row already on disk). Each schema change appends a step
+/// every row already on disk). Version 4 deletes rows orphaned while foreign
+/// keys went unenforced, so the database stops contradicting the constraints
+/// it declares (ADR-0006). Each schema change appends a step
 /// here; `onCreate` and `onUpgrade` pick it up automatically since both are
 /// thin callers of [Migrations.stepsFrom].
+///
+/// Version 4 is also this ladder's first step that deletes user rows rather
+/// than only shaping the schema. ADR-0005 anticipated row-level SQL; what it
+/// asks of a step like this is that the predicate be exact and the reason be
+/// written down beside it, which is why the step below carries its own
+/// commentary.
 const List<MigrationStep> productionLadder = <MigrationStep>[
   MigrationStep(
     version: 1,
@@ -145,6 +153,47 @@ const List<MigrationStep> productionLadder = <MigrationStep>[
     version: 3,
     statements: <String>[
       'ALTER TABLE characters ADD COLUMN prepared_spells_max INTEGER DEFAULT 0',
+    ],
+  ),
+  // Version 4 sweeps out rows whose parent no longer exists. They accumulated
+  // because foreign keys were never enforced (ADR-0006): a deleted Campaign
+  // left its Chapters behind, those Chapters' SessionScreens behind them, and
+  // so on down. Enabling enforcement does not retroactively validate rows
+  // already on disk, so without this step a database would keep contradicting
+  // the constraints it now declares.
+  //
+  // None of these rows were reachable from the app: every read descends from a
+  // parent id (`getChapters(campaignId)`, `getScreens(chapterId)`,
+  // `getComponents(screenId)`), so nothing that was visible to a DM is
+  // removed here.
+  //
+  // The order matters and does not lean on the cascade: deleting orphaned
+  // Chapters first turns their SessionScreens into orphans, which the next
+  // statement then catches, and likewise down to SessionComponents. `NOT
+  // EXISTS` rather than `NOT IN` because `NOT IN` yields no rows at all if any
+  // parent id is NULL — SQLite permits NULL in a TEXT PRIMARY KEY.
+  MigrationStep(
+    version: 4,
+    statements: <String>[
+      '''
+      DELETE FROM chapters
+      WHERE NOT EXISTS (
+        SELECT 1 FROM campaigns WHERE campaigns.id = chapters.campaign_id
+      )
+    ''',
+      '''
+      DELETE FROM session_screens
+      WHERE NOT EXISTS (
+        SELECT 1 FROM chapters WHERE chapters.id = session_screens.chapter_id
+      )
+    ''',
+      '''
+      DELETE FROM components
+      WHERE NOT EXISTS (
+        SELECT 1 FROM session_screens
+        WHERE session_screens.id = components.screen_id
+      )
+    ''',
     ],
   ),
 ];
