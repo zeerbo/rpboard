@@ -15,6 +15,11 @@ import 'import_confirmation_dialog.dart';
 /// their envelope metadata, the confirmation gate before an import (through
 /// [ImportConfirmationDialog]), and the backups available to restore from,
 /// each behind its own confirmation.
+///
+/// An archive the version policy would refuse (a higher `schemaVersion` than
+/// this installation's) is marked in the list itself — a warning icon and
+/// its refusal message in place of the device label — so the user sees why
+/// it can't be used before tapping it, not only after (ticket 05).
 class DataTransferScreen extends ConsumerWidget {
   const DataTransferScreen({super.key});
 
@@ -170,18 +175,38 @@ class DataTransferScreen extends ConsumerWidget {
                 style: TextStyle(color: AppTheme.onSurfaceMuted),
               )
             else
-              ...state.archives.map(
-                (archive) => Card(
+              ...state.archives.map((archive) {
+                // A refused archive must be visibly distinguishable in this
+                // list, before the user selects it — not only after they
+                // tap through to the confirmation (ticket 05). The version
+                // policy is a pure function of the envelope, so it costs
+                // nothing to evaluate for every tile on every build.
+                final notifier = ref.read(dataTransferProvider.notifier);
+                final outcome = notifier.evaluateVersion(archive);
+                final isRefused = outcome != SchemaVersionOutcome.accepted;
+                return Card(
                   child: ListTile(
-                    leading: const Icon(Icons.description_outlined),
+                    leading: Icon(
+                      isRefused
+                          ? Icons.warning_amber_rounded
+                          : Icons.description_outlined,
+                      color: isRefused ? AppTheme.warning : null,
+                    ),
                     title: Text(archive.envelope.exportedAt.toLocal().toString()),
-                    subtitle: Text('Da: ${archive.envelope.deviceLabel}'),
+                    subtitle: Text(
+                      isRefused
+                          ? notifier.refusalMessageFor(archive)
+                          : 'Da: ${archive.envelope.deviceLabel}',
+                      style: isRefused
+                          ? const TextStyle(color: AppTheme.warning)
+                          : null,
+                    ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () => _pickArchive(context, ref, archive,
                         state.localCharacterCount, state.localCampaignCount),
                   ),
-                ),
-              ),
+                );
+              }),
             const SizedBox(height: 24),
             Text(
               'Backup',

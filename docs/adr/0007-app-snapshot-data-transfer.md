@@ -25,10 +25,18 @@ through every layer for Characters only; a later ticket adds Campaign material a
 Import semantics are **replace**, not upsert: the user works on one installation at a time, and a
 replace has an invariant they can reason about ("both installations now hold the same state") where
 a merge would have conflict rules they would have to keep in their head. Version compatibility is
-strict for this ticket — an archive's `schemaVersion` must equal this installation's exactly, or it
-is refused; a later ticket relaxes this to accept an older archive (the models' own `??` fallbacks,
-102 of them on `Character.fromMap` alone, already tolerate missing fields) while continuing to
-refuse a newer one, which would mean silently discarding data this installation cannot represent.
+**asymmetric**, as shipped by ticket 05: an archive's `schemaVersion` equal to or lower than this
+installation's imports — the models' own `??` fallbacks, 102 of them on `Character.fromMap` alone,
+already tolerate the fields an older archive doesn't carry, so accepting a lower schema relies on
+existing behaviour rather than adding new leniency — while a higher `schemaVersion` is refused, with
+a message telling the user to update this installation, because importing it would mean silently
+discarding data this installation cannot represent. `formatVersion` — the JSON shape `SnapshotCodec`
+itself reads, independent of the database schema the payload was produced from — has no such
+tolerance: `SnapshotCodec.decode` refuses any archive whose `formatVersion` doesn't match its own,
+in either direction, with its own message distinct from a `schemaVersion` refusal, because a codec
+that has only ever spoken one shape cannot assume it can parse another. An archive the version
+policy would refuse is also marked in the Trasferisci dati screen's archive list itself — not only
+in the confirmation the user reaches by tapping it — so the reason is visible before it is selected.
 
 ## Considered Options
 
@@ -116,12 +124,15 @@ refuse a newer one, which would mean silently discarding data this installation 
   read path has ever surfaced to a DM — are simply not reachable from any Campaign and so are never
   exported; the first import after that sweeps them, which is expected and was verified separately,
   not something this ticket needed to reason about further.
-- **Version compatibility is asymmetric in the PRD's design, but this ticket ships the strict
-  half only.** `SchemaVersionPolicy` already models three outcomes (`accepted`, `refusedNewer`,
-  `refusedOlder`), but ticket 02 evaluates `refusedOlder` the same way as `refusedNewer`: anything
-  but an exact match is refused. Relaxing `refusedOlder` into an accepted import is a later ticket's
-  decision, tracked so it is a visible, deliberate change to `version_policy_test.dart` rather than
-  something this work pre-empted.
+- **Version compatibility shipped in two steps, on purpose.** Ticket 02 shipped a strict interim
+  policy — `SchemaVersionPolicy` modeled three outcomes (`accepted`, `refusedNewer`,
+  `refusedOlder`), and evaluated `refusedOlder` the same way as `refusedNewer`: anything but an
+  exact match was refused. Ticket 05 relaxes that half: `refusedOlder` is gone from the enum
+  entirely (`evaluate` only ever returns `accepted` or `refusedNewer` now), and the change to
+  `version_policy_test.dart` this required is recorded there and in that ticket's own report,
+  rather than being pre-empted here. The same ticket also added the `formatVersion` check
+  `SnapshotCodec.decode` had never performed (it read the field's presence and type but never
+  compared its value), and the archive-list warning in the Trasferisci dati screen.
 - **What makes this reusable on a new platform is the layering, not any single choice.** The
   format (`SnapshotCodec`) and the database work (`Database.exportSnapshot`/`importSnapshot`) are
   platform-agnostic or adapter-local; only `SyncTransport` touches platform I/O, and only it needs

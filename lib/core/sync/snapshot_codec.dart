@@ -9,10 +9,11 @@ import '../../models/component.dart';
 
 /// Thrown when a string handed to [SnapshotCodec.decode] is not a readable
 /// RPBoard archive: not JSON at all, JSON but not an envelope, an envelope
-/// missing a required field or carrying one of the wrong type, or a payload
-/// entry that doesn't parse. Every case is refused with no partial
-/// application — [SnapshotCodec.decode] either returns a complete
-/// [SnapshotEnvelope] or throws, never something half-built.
+/// missing a required field or carrying one of the wrong type, a
+/// `formatVersion` this codec does not speak, or a payload entry that
+/// doesn't parse. Every case is refused with no partial application —
+/// [SnapshotCodec.decode] either returns a complete [SnapshotEnvelope] or
+/// throws, never something half-built.
 class SnapshotFormatException implements Exception {
   final String message;
   const SnapshotFormatException(this.message);
@@ -121,6 +122,22 @@ class SnapshotCodec {
     if (formatVersionValue is! int) {
       throw const SnapshotFormatException(
           'formatVersion mancante o non numerico');
+    }
+    // formatVersion and schemaVersion mean different things (PRD, "The
+    // exchange format is logical JSON with a versioned envelope"):
+    // schemaVersion is a database schema this installation's models can
+    // often still read via their own default-tolerant fromMap (see
+    // SchemaVersionPolicy); formatVersion is the JSON shape this codec
+    // itself knows how to read, and there is no such tolerance for it — a
+    // codec that has only ever spoken one shape cannot assume it can parse
+    // another. So any mismatch, not just a higher value, is refused here,
+    // with a message naming formatVersion specifically rather than being
+    // mistaken for a schemaVersion refusal.
+    if (formatVersionValue != SnapshotCodec.formatVersion) {
+      throw SnapshotFormatException(
+          'formatVersion dell\'archivio ($formatVersionValue) non è '
+          'supportato da questa versione di RPBoard (atteso '
+          '${SnapshotCodec.formatVersion})');
     }
 
     final schemaVersionValue = decoded['schemaVersion'];

@@ -203,6 +203,50 @@ void main() {
       );
     });
 
+    test('schemaVersion present but non-numeric', () {
+      expect(
+        () => codec.decode('{"formatVersion": 1, "schemaVersion": "four", '
+            '"appVersion": "1.0.0", "exportedAt": "2026-01-01T00:00:00.000Z", '
+            '"deviceLabel": "x", "payload": {"characters": []}}'),
+        throwsA(isA<SnapshotFormatException>()),
+      );
+    });
+
+    test('a formatVersion this codec does not speak is refused with its own '
+        'message, distinguishable from a schemaVersion refusal', () {
+      String decodeMessage(String json) {
+        try {
+          codec.decode(json);
+        } on SnapshotFormatException catch (e) {
+          return e.message;
+        }
+        fail('expected a SnapshotFormatException');
+      }
+
+      final formatMessage = decodeMessage(
+          '{"formatVersion": 99, "schemaVersion": 4, "appVersion": "1.0.0", '
+          '"exportedAt": "2026-01-01T00:00:00.000Z", "deviceLabel": "x", '
+          '"payload": {"characters": []}}');
+      final schemaMessage = decodeMessage(
+          '{"formatVersion": 1, "schemaVersion": "four", "appVersion": '
+          '"1.0.0", "exportedAt": "2026-01-01T00:00:00.000Z", "deviceLabel": '
+          '"x", "payload": {"characters": []}}');
+
+      expect(formatMessage, contains('formatVersion'));
+      expect(formatMessage, isNot(equals(schemaMessage)));
+    });
+
+    test('a formatVersion lower than this codec speaks is refused too — '
+        'there is no shape-tolerance for it the way there is for '
+        'schemaVersion', () {
+      expect(
+        () => codec.decode('{"formatVersion": 0, "schemaVersion": 4, '
+            '"appVersion": "1.0.0", "exportedAt": "2026-01-01T00:00:00.000Z", '
+            '"deviceLabel": "x", "payload": {"characters": []}}'),
+        throwsA(isA<SnapshotFormatException>()),
+      );
+    });
+
     test('exportedAt is not a parseable date', () {
       expect(
         () => codec.decode('{"formatVersion": 1, "schemaVersion": 4, '
@@ -446,6 +490,32 @@ void main() {
       expect(decoded.chapters, isEmpty);
       expect(decoded.screens, isEmpty);
       expect(decoded.components, isEmpty);
+    });
+
+    test('an archive from a lower schemaVersion decodes, and the fields its '
+        'Character entries lack take the defaults Character.fromMap already '
+        'applies — no new fallback logic, the existing ?? defaults', () {
+      // Stands in for an export written by an older installation: a
+      // Character map carrying only the one field fromMap requires (`id`),
+      // as if every field introduced by a later schema version were simply
+      // never written.
+      final json = '{"formatVersion": 1, "schemaVersion": 2, '
+          '"appVersion": "0.9.0", "exportedAt": "2025-01-01T00:00:00.000Z", '
+          '"deviceLabel": "OLDER-PC", "payload": {"characters": '
+          '[{"id": "c1"}]}}';
+
+      final decoded = codec.decode(json).snapshot;
+      final character = decoded.characters.single;
+      final defaults = Character(id: 'c1');
+
+      expect(character.id, 'c1');
+      expect(character.name, defaults.name);
+      expect(character.level, defaults.level);
+      expect(character.strength, defaults.strength);
+      expect(character.hpMax, defaults.hpMax);
+      expect(character.armor, defaults.armor);
+      expect(character.spellSlots, defaults.spellSlots);
+      expect(character.equipment, defaults.equipment);
     });
   });
 }

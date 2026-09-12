@@ -63,6 +63,47 @@ void main() {
     expect(find.byType(ListTile), findsOneWidget);
   });
 
+  testWidgets(
+      'an archive with a higher schemaVersion is visibly distinguishable in '
+      'the list, before it is selected', (tester) async {
+    final exporterDb = InMemoryDatabase();
+    await exporterDb.insertCharacter(Character(id: 'x', name: 'From the future'));
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: await exporterDb.exportSnapshot(),
+      schemaVersion: const Migrations().latestVersion + 1,
+      appVersion: '99.0.0',
+      exportedAt: DateTime.utc(2026, 1, 1),
+      deviceLabel: 'FUTURE-PC',
+    ));
+
+    await pumpScreen(tester);
+
+    // The refusal is visible on the tile itself — a warning icon and the
+    // update-this-installation message in place of the device label — with
+    // no tap needed to discover it.
+    expect(find.byIcon(Icons.warning_amber_rounded), findsOneWidget);
+    expect(find.textContaining('Aggiorna questa installazione'), findsOneWidget);
+  });
+
+  testWidgets(
+      'a compatible archive shows the device label instead of a refusal '
+      'warning', (tester) async {
+    final exporterDb = InMemoryDatabase();
+    await exporterDb.insertCharacter(Character(id: 'x', name: 'From archive'));
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: await exporterDb.exportSnapshot(),
+      schemaVersion: const Migrations().latestVersion,
+      appVersion: '1.0.0+1',
+      exportedAt: DateTime.utc(2026, 1, 1),
+      deviceLabel: 'OTHER-PC',
+    ));
+
+    await pumpScreen(tester);
+
+    expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+    expect(find.textContaining('Da: OTHER-PC'), findsOneWidget);
+  });
+
   testWidgets('tapping an archive opens the import confirmation', (tester) async {
     final exporterDb = InMemoryDatabase();
     await exporterDb.insertCharacter(Character(id: 'x', name: 'From archive'));

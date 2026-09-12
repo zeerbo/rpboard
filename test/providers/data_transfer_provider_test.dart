@@ -133,8 +133,8 @@ void main() {
     expect(list.map((c) => c.id), ['new-1']);
   });
 
-  test('importArchive refuses an archive with a mismatched schemaVersion and '
-      'leaves local data untouched', () async {
+  test('importArchive refuses an archive with a higher schemaVersion and '
+      'leaves local data untouched, with no backup taken', () async {
     await db.insertCharacter(Character(id: 'old', name: 'Untouched'));
     await transport.writeArchive(const SnapshotCodec().encode(
       snapshot: const AppSnapshot(characters: []),
@@ -155,6 +155,46 @@ void main() {
 
     final characters = await db.getCharacters();
     expect(characters.map((c) => c.id), ['old']);
+    expect(await db.listBackups(), isEmpty,
+        reason: 'an import that never began must not consume a backup');
+  });
+
+  test('importArchive imports an archive with a lower schemaVersion than '
+      'this installation, relying on the models\' own defaults for the '
+      'fields it does not carry', () async {
+    await db.insertCharacter(Character(id: 'old', name: 'Will be replaced'));
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: AppSnapshot(characters: [Character(id: 'new-1', name: 'From an older install')]),
+      schemaVersion: const Migrations().latestVersion - 1,
+      appVersion: '0.9.0',
+      exportedAt: DateTime.utc(2025, 1, 1),
+      deviceLabel: 'OLDER-PC',
+    ));
+
+    final container = makeContainer();
+    final state = await container.read(dataTransferProvider.future);
+    final archive = state.archives.single;
+
+    await container.read(dataTransferProvider.notifier).importArchive(archive);
+
+    final characters = await db.getCharacters();
+    expect(characters.map((c) => c.id), ['new-1']);
+  });
+
+  test('evaluateVersion accepts a lower schemaVersion', () async {
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: const AppSnapshot(characters: []),
+      schemaVersion: const Migrations().latestVersion - 1,
+      appVersion: '0.9.0',
+      exportedAt: DateTime.utc(2025, 1, 1),
+      deviceLabel: 'OLDER-PC',
+    ));
+    final container = makeContainer();
+    final state = await container.read(dataTransferProvider.future);
+
+    final outcome = container.read(dataTransferProvider.notifier).evaluateVersion(state.archives.single);
+
+    expect(outcome, SchemaVersionOutcome.accepted);
   });
 
   test('build reflects the local Campaign count alongside the Character '

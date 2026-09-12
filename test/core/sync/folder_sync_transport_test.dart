@@ -111,6 +111,39 @@ void main() {
     expect(archives, hasLength(1));
   });
 
+  test('a file with a formatVersion this codec does not speak is skipped '
+      'like any other unreadable file', () async {
+    final folder = Directory(await transport.exchangeFolderPath());
+    await File(p.join(folder.path, 'future-format.json')).writeAsString(
+      '{"formatVersion": 99, "schemaVersion": 4, "appVersion": "9.0.0", '
+      '"exportedAt": "2026-01-01T00:00:00.000Z", "deviceLabel": "x", '
+      '"payload": {"characters": []}}',
+    );
+    await transport.writeArchive(encodeArchive(exportedAt: DateTime.utc(2026, 1, 1)));
+
+    final archives = await transport.listArchives();
+
+    expect(archives, hasLength(1));
+  });
+
+  test('an archive with a higher schemaVersion than this codec\'s own is '
+      'still listed — it is the version *policy*, evaluated above this '
+      'layer, that refuses it, not the transport or the codec', () async {
+    await transport.writeArchive(encodeArchive(exportedAt: DateTime.utc(2026, 1, 1)));
+    await transport.writeArchive(codec.encode(
+      snapshot: const AppSnapshot(characters: []),
+      schemaVersion: 999,
+      appVersion: '99.0.0',
+      exportedAt: DateTime.utc(2026, 2, 1),
+      deviceLabel: 'FUTURE-PC',
+    ));
+
+    final archives = await transport.listArchives();
+
+    expect(archives, hasLength(2));
+    expect(archives.map((a) => a.envelope.schemaVersion), [999, 4]);
+  });
+
   test('deviceLabel returns a non-empty string', () {
     expect(transport.deviceLabel(), isNotEmpty);
   });
