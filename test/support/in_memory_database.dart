@@ -242,6 +242,77 @@ class InMemoryDatabase implements Database {
       ..addEntries(snapshot.characters.map((c) => MapEntry(c.id, c)));
   }
 
+  // ─── Backup & restore ──────────────────────────────────────────────────────
+  //
+  // A byte-copy backup has no meaning against a map-backed fake — there is
+  // no file to copy. What matters for a test exercising the orchestration
+  // above the `Database` seam (`DataTransferNotifier`) is the observable
+  // contract: a backup captures the *entire* current state (every table,
+  // not just what `AppSnapshot` covers today), retention keeps the 5 most
+  // recent, and a restore replaces the current state with exactly what a
+  // chosen backup captured. This fake reproduces that contract with an
+  // in-memory list of state snapshots instead of files.
+
+  final List<_InMemoryBackup> _backups = [];
+  int _backupCounter = 0;
+
+  /// Test hook: when set, [backupDatabase] throws this instead of
+  /// succeeding, letting a test simulate a backup that cannot be written
+  /// (e.g. a full disk) and assert the caller aborts before touching any
+  /// row.
+  Object? backupFailure;
+
+  @override
+  Future<DatabaseBackupInfo> backupDatabase() async {
+    final failure = backupFailure;
+    if (failure != null) throw failure;
+
+    final info = DatabaseBackupInfo(
+      path: '/fake/backups/rpboard-backup-${_backupCounter++}.db',
+      createdAt: DateTime.now(),
+    );
+    _backups.add(_InMemoryBackup(
+      info: info,
+      characters: Map.of(_characters),
+      campaigns: Map.of(_campaigns),
+      chapters: Map.of(_chapters),
+      screens: Map.of(_screens),
+      components: Map.of(_components),
+    ));
+    while (_backups.length > 5) {
+      _backups.removeAt(0);
+    }
+    return info;
+  }
+
+  @override
+  Future<List<DatabaseBackupInfo>> listBackups() async =>
+      _backups.reversed.map((b) => b.info).toList();
+
+  @override
+  Future<void> restoreBackup(DatabaseBackupInfo backup) async {
+    final match = _backups.where((b) => b.info.path == backup.path);
+    if (match.isEmpty) {
+      throw StateError('no backup at ${backup.path}');
+    }
+    final chosen = match.first;
+    _characters
+      ..clear()
+      ..addAll(chosen.characters);
+    _campaigns
+      ..clear()
+      ..addAll(chosen.campaigns);
+    _chapters
+      ..clear()
+      ..addAll(chosen.chapters);
+    _screens
+      ..clear()
+      ..addAll(chosen.screens);
+    _components
+      ..clear()
+      ..addAll(chosen.components);
+  }
+
   /// The real adapter lets SQLite raise on a primary key collision for the
   /// three parent tables; this is the fake's stand-in for that. It throws
   /// [StateError] rather than sqflite's own exception type on purpose — a test
@@ -254,4 +325,26 @@ class InMemoryDatabase implements Database {
       throw StateError('duplicate id "$id" inserted into $table');
     }
   }
+}
+
+/// One captured state snapshot backing [InMemoryDatabase]'s fake
+/// backup/restore. Not related to [AppSnapshot] — it holds every table,
+/// mirroring what a real byte-copy backup of the whole database file would
+/// contain, regardless of what `AppSnapshot` itself currently covers.
+class _InMemoryBackup {
+  final DatabaseBackupInfo info;
+  final Map<String, Character> characters;
+  final Map<String, Campaign> campaigns;
+  final Map<String, Chapter> chapters;
+  final Map<String, SessionScreen> screens;
+  final Map<String, SessionComponent> components;
+
+  _InMemoryBackup({
+    required this.info,
+    required this.characters,
+    required this.campaigns,
+    required this.chapters,
+    required this.screens,
+    required this.components,
+  });
 }

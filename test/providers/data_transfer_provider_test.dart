@@ -170,4 +170,102 @@ void main() {
 
     expect(outcome, SchemaVersionOutcome.accepted);
   });
+
+  test('build reflects the backups the database already holds', () async {
+    await db.backupDatabase();
+    final container = makeContainer();
+
+    final state = await container.read(dataTransferProvider.future);
+
+    expect(state.backups, hasLength(1));
+  });
+
+  test('importArchive backs up the database before replacing local '
+      'Characters', () async {
+    await db.insertCharacter(Character(id: 'old', name: 'Before the import'));
+    final exporterDb = InMemoryDatabase();
+    await exporterDb.insertCharacter(Character(id: 'new-1', name: 'From archive'));
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: await exporterDb.exportSnapshot(),
+      schemaVersion: const Migrations().latestVersion,
+      appVersion: '1.0.0+1',
+      exportedAt: DateTime.utc(2026, 1, 1),
+      deviceLabel: 'OTHER-PC',
+    ));
+    final container = makeContainer();
+    final state = await container.read(dataTransferProvider.future);
+    final archive = state.archives.single;
+
+    expect(await db.listBackups(), isEmpty,
+        reason: 'no backup exists yet, before the import runs');
+
+    await container.read(dataTransferProvider.notifier).importArchive(archive);
+
+    final backups = await db.listBackups();
+    expect(backups, hasLength(1),
+        reason: 'the import must be preceded by exactly one backup');
+
+    // The backup must have captured the pre-import state, not the
+    // post-import one.
+    await db.restoreBackup(backups.single);
+    expect((await db.getCharacters()).map((c) => c.id), ['old']);
+  });
+
+  test('importArchive aborts without touching local data when the backup '
+      'cannot be written', () async {
+    await db.insertCharacter(Character(id: 'untouched', name: 'Untouched'));
+    db.backupFailure = Exception('simulated disk-full backup failure');
+    final exporterDb = InMemoryDatabase();
+    await exporterDb.insertCharacter(Character(id: 'new-1', name: 'From archive'));
+    await transport.writeArchive(const SnapshotCodec().encode(
+      snapshot: await exporterDb.exportSnapshot(),
+      schemaVersion: const Migrations().latestVersion,
+      appVersion: '1.0.0+1',
+      exportedAt: DateTime.utc(2026, 1, 1),
+      deviceLabel: 'OTHER-PC',
+    ));
+    final container = makeContainer();
+    final state = await container.read(dataTransferProvider.future);
+    final archive = state.archives.single;
+
+    await expectLater(
+      container.read(dataTransferProvider.notifier).importArchive(archive),
+      throwsA(isA<Exception>()),
+    );
+
+    final characters = await db.getCharacters();
+    expect(characters.map((c) => c.id), ['untouched'],
+        reason: 'a backup that cannot be written must abort the import '
+            'rather than proceed unprotected');
+  });
+
+  test('restoreBackup replaces local Characters with the backup\'s content',
+      () async {
+    await db.insertCharacter(Character(id: 'kept', name: 'Present at backup time'));
+    final container = makeContainer();
+    await container.read(dataTransferProvider.future);
+    final backup = await db.backupDatabase();
+
+    await db.insertCharacter(Character(id: 'added-later', name: 'Not in the backup'));
+
+    await container.read(dataTransferProvider.notifier).restoreBackup(backup);
+
+    final characters = await db.getCharacters();
+    expect(characters.map((c) => c.id), ['kept']);
+  });
+
+  test('restoreBackup invalidates characterListProvider so PG Mode sees the '
+      'restored roster without an app restart', () async {
+    await db.insertCharacter(Character(id: 'kept', name: 'Present at backup time'));
+    final container = makeContainer();
+    await container.read(characterListProvider.future);
+    await container.read(dataTransferProvider.future);
+    final backup = await db.backupDatabase();
+    await db.insertCharacter(Character(id: 'added-later', name: 'Not in the backup'));
+
+    await container.read(dataTransferProvider.notifier).restoreBackup(backup);
+
+    final list = await container.read(characterListProvider.future);
+    expect(list.map((c) => c.id), ['kept']);
+  });
 }

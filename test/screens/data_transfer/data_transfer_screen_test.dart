@@ -103,4 +103,70 @@ void main() {
     final characters = await db.getCharacters();
     expect(characters.map((c) => c.id), ['local']);
   });
+
+  testWidgets('the backup list renders its entries with their timestamps',
+      (tester) async {
+    await db.backupDatabase();
+
+    await pumpScreen(tester);
+
+    expect(find.byType(ListTile), findsOneWidget);
+    expect(find.text('Ripristina'), findsOneWidget);
+    expect(find.textContaining('Nessun backup'), findsNothing);
+  });
+
+  testWidgets('with no backup, the screen says so instead of listing one',
+      (tester) async {
+    await pumpScreen(tester);
+
+    expect(find.textContaining('Nessun backup'), findsOneWidget);
+  });
+
+  testWidgets(
+      'restoring a backup asks for confirmation before touching anything',
+      (tester) async {
+    await db.insertCharacter(Character(id: 'kept', name: 'Present at backup time'));
+    await db.backupDatabase();
+    await db.insertCharacter(Character(id: 'added-later', name: 'Not in the backup'));
+    await pumpScreen(tester);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Ripristina'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ripristina backup'), findsOneWidget,
+        reason: 'restore must ask for its own confirmation before acting');
+
+    await tester.tap(find.text('Annulla'));
+    await tester.pumpAndSettle();
+
+    final characters = await db.getCharacters();
+    expect(characters.map((c) => c.id), containsAll(['kept', 'added-later']),
+        reason: 'cancelling the confirmation must not restore anything');
+  });
+
+  testWidgets('confirming a restore replaces local Characters with the '
+      'backup\'s content', (tester) async {
+    await db.insertCharacter(Character(id: 'kept', name: 'Present at backup time'));
+    await db.backupDatabase();
+    await db.insertCharacter(Character(id: 'added-later', name: 'Not in the backup'));
+    await pumpScreen(tester);
+
+    await tester.tap(find.widgetWithText(TextButton, 'Ripristina'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(ElevatedButton, 'Ripristina'));
+    await tester.pumpAndSettle();
+
+    final characters = await db.getCharacters();
+    expect(characters.map((c) => c.id), ['kept']);
+  });
+
+  testWidgets('the open-folder control reaches the transport seam',
+      (tester) async {
+    await pumpScreen(tester);
+
+    await tester.tap(find.text('Apri cartella'));
+    await tester.pumpAndSettle();
+
+    expect(transport.openExchangeFolderCalled, isTrue);
+  });
 }
